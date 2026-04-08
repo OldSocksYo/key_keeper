@@ -6,6 +6,10 @@ class AppConstants {
   static const String initSecretName = 'init_secret';
   static const String userKeyEncryptedName = 'user_key_encrypted';
   static const String userKeySetName = 'user_key_set';
+  static const String appMasterPasswordHashName = 'app_master_password_hash';
+  static const String unlockMethodName = 'unlock_method';
+  static const String unlockMethodBiometric = 'biometric';
+  static const String unlockMethodMasterPassword = 'master_password';
 
   static const List<String> codeAccountType = <String>[
     'GitHub',
