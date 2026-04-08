@@ -1,65 +1,108 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:hive_flutter/hive_flutter.dart';
-import 'package:local_auth/local_auth.dart';
 import 'package:go_router/go_router.dart';
-import 'dart:math';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:key_keeper/common/constants.dart';
+import 'package:key_keeper/models/account_entry.dart';
+import 'package:key_keeper/pages/home_page.dart';
+import 'package:key_keeper/pages/unlock_page.dart';
+import 'package:key_keeper/services/account_service.dart';
+import 'package:key_keeper/services/crypto_service.dart';
+import 'package:key_keeper/services/csv_service.dart';
+import 'package:key_keeper/services/key_service.dart';
+import 'package:key_keeper/services/totp_service.dart';
+import 'package:local_auth/local_auth.dart';
 
-// 导入后续要创建的页面（先占位，后面创建）
-import 'pages/unlock_page.dart';
-import 'pages/home_page.dart';
+final FlutterSecureStorage secureStorage = FlutterSecureStorage();
+final LocalAuthentication localAuth = LocalAuthentication();
 
-// 全局常量
-const String hiveBoxName = 'password_box'; // Hive 数据库名称
-const String secureKeyName = 'encryption_key'; // 加密密钥存储键名
-final FlutterSecureStorage secureStorage = FlutterSecureStorage(); // 系统安全存储
-final LocalAuthentication localAuth = LocalAuthentication(); // 生物识别实例
+late final CryptoService appCryptoService;
+late final KeyService appKeyService;
+late final AccountService appAccountService;
+late final TotpService appTotpService;
+late final CsvService appCsvService;
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
-  // 1. 初始化 Hive 数据库
-  await Hive.initFlutter();
-  // 2. 获取/生成加密密钥（首次启动生成，后续复用）
-  String? encryptionKey = await secureStorage.read(key: secureKeyName);
-  if (encryptionKey == null) {
-    // 首次启动：生成随机 32 位密钥（AES-256 要求）
-    encryptionKey = List.generate(32, (index) => Random().nextInt(256)).toString();
-    await secureStorage.write(key: secureKeyName, value: encryptionKey);
-  }
-  // 3. 打开加密的 Hive 数据库
-  final encryptionCipher = HiveAesCipher(encryptionKey.codeUnits);
-  await Hive.openBox(hiveBoxName, encryptionCipher: encryptionCipher);
-
-  // 4. 启动应用
-  runApp(const MyApp());
-}
-
-// 路由配置
-final GoRouter _router = GoRouter(
-  initialLocation: '/unlock', // 启动页：解锁页
+final GoRouter appRouter = GoRouter(
+  initialLocation: '/unlock',
   routes: [
-    GoRoute(
-      path: '/unlock',
-      builder: (context, state) => const UnlockPage(),
-    ),
-    GoRoute(
-      path: '/home',
-      builder: (context, state) => const HomePage(),
-    ),
+    GoRoute(path: '/unlock', builder: (context, state) => const UnlockPage()),
+    GoRoute(path: '/home', builder: (context, state) => const HomePage()),
   ],
 );
 
-class MyApp extends StatelessWidget {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Hive.initFlutter();
+  Hive.registerAdapter(AccountEntryAdapter());
+
+  appCryptoService = CryptoService();
+  appKeyService = KeyService(secureStorage, appCryptoService);
+  final hiveKey = await appKeyService.ensureHiveKey();
+  final keyBytes = base64Decode(hiveKey);
+  final box = await Hive.openBox<AccountEntry>(
+    AppConstants.accountBoxName,
+    encryptionCipher: HiveAesCipher(keyBytes),
+  );
+
+  appAccountService = AccountService(box, appCryptoService, appKeyService);
+  appTotpService = TotpService();
+  appCsvService = CsvService(appAccountService, appKeyService, appCryptoService);
+
+  runApp(const MyApp());
+}
+
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  bool _wentBackground = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _wentBackground = true;
+    }
+    if (state == AppLifecycleState.resumed && _wentBackground) {
+      _wentBackground = false;
+      appRouter.go('/unlock');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp.router(
       title: 'KeyKeeper',
-      theme: ThemeData(primarySwatch: Colors.blue),
-      routerConfig: _router,
       debugShowCheckedModeBanner: false,
+      themeMode: ThemeMode.system,
+      theme: ThemeData(
+        useMaterial3: true,
+        colorSchemeSeed: Colors.indigo,
+        brightness: Brightness.light,
+      ),
+      darkTheme: ThemeData(
+        useMaterial3: true,
+        colorSchemeSeed: Colors.indigo,
+        brightness: Brightness.dark,
+      ),
+      routerConfig: appRouter,
     );
   }
 }

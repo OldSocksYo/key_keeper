@@ -13,11 +13,13 @@ class UnlockPage extends StatefulWidget {
 class _UnlockPageState extends State<UnlockPage> {
   bool _isBiometricAvailable = false;
   List<BiometricType> _availableBiometrics = [];
+  bool _authInProgress = false;
 
   @override
   void initState() {
     super.initState();
     _checkBiometricAvailability();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _authenticate());
   }
 
   // 检查设备是否支持生物识别
@@ -38,6 +40,8 @@ class _UnlockPageState extends State<UnlockPage> {
 
   // 执行生物识别/系统密码验证
   Future<void> _authenticate() async {
+    if (_authInProgress) return;
+    _authInProgress = true;
     bool authenticated = false;
     try {
       authenticated = await localAuth.authenticate(
@@ -50,9 +54,12 @@ class _UnlockPageState extends State<UnlockPage> {
       );
     } catch (e) {
       debugPrint("验证失败：$e");
+    } finally {
+      _authInProgress = false;
     }
 
-    if (mounted && authenticated) {
+    if (!mounted) return;
+    if (authenticated) {
       // 验证成功：跳转到首页
       context.go('/home');
     } else {
@@ -69,8 +76,20 @@ class _UnlockPageState extends State<UnlockPage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.lock, size: 80, color: Colors.blue),
-            const SizedBox(height: 20),
+            Container(
+              width: 88,
+              height: 88,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Icon(
+                Icons.lock,
+                size: 52,
+                color: Theme.of(context).colorScheme.onPrimaryContainer,
+              ),
+            ),
+            const SizedBox(height: 24),
             const Text(
               "KeyKeeper",
               style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
@@ -84,12 +103,12 @@ class _UnlockPageState extends State<UnlockPage> {
             ),
             const SizedBox(height: 30),
             ElevatedButton(
-              onPressed: _authenticate,
+              onPressed: _authInProgress ? null : _authenticate,
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
                 textStyle: const TextStyle(fontSize: 18),
               ),
-              child: const Text("解锁"),
+              child: Text(_authInProgress ? "验证中..." : "解锁"),
             ),
           ],
         ),
