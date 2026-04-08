@@ -1,17 +1,89 @@
-# key_keeper
+# KeyKeeper 用户使用说明
 
-A new Flutter project.
+KeyKeeper 是一款本地离线密码管理应用，可用于保存账号密码和 2FA 动态验证码（TOTP）。
 
-## Getting Started
+## 能做什么
 
-This project is a starting point for a Flutter application.
+- 保存常见账号信息（平台、用户名、密码）
+- 保存并使用 TOTP 动态码（如 GitHub 双重验证）
+- 支持两种解锁方式：
+  - 生物识别
+  - 主密码
+- 支持账号导入导出（加密/明文）
 
-A few resources to get you started if this is your first Flutter project:
+## 首次使用（建议按顺序）
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+### 1. 进入应用并解锁
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+- 如果你选择了生物识别：按系统提示验证
+- 如果你选择了主密码：首次需要先设置主密码
+
+### 2. 设置个人密钥
+
+在 `我的 -> 设置个人密钥` 中设置。  
+个人密钥用于应用内数据加密，建议设置后再录入账号。
+
+### 3. 添加账号
+
+进入 `账号` 页，点击右上角 `+`，填写：
+
+- 账户类型（例如 GitHub、Google）
+- 用户名
+- 登录密码（可选）
+- TOTP 密钥（可选）
+
+保存后会出现在账号列表中。
+
+## 日常使用
+
+### 查看/编辑账号
+
+在 `账号` 页点击任意账号进入详情，可编辑密码和 TOTP 密钥。
+
+### 查看 TOTP 动态码
+
+在账号详情页中可看到实时验证码和倒计时（每 30 秒刷新）。
+
+### 删除账号
+
+在 `账号` 页长按账号并确认删除。
+
+### 搜索账号
+
+在 `账号` 页点击右上角搜索图标，按类型或用户名筛选。
+
+## 解锁方式切换
+
+进入 `我的 -> 解锁方式`，可以在以下两种方式中切换：
+
+- 生物识别
+- 主密码
+
+切换后通常在下次进入解锁页生效。
+
+## 导入导出说明
+
+在 `我的` 页可以使用：
+
+- 加密导出
+- 加密导入
+- 明文导出
+- 明文导入
+
+当前 CSV 格式为：
+
+`typeText,username,password,totpSecret`
+
+## 常见问题
+
+### 设备不支持生物识别怎么办？
+
+到 `我的 -> 解锁方式` 切换为 `主密码`，然后使用主密码解锁。
+
+### 忘记主密码怎么办？
+
+当前版本没有找回主密码功能，请务必妥善保管。
+
+### 数据会上传到云端吗？
+
+不会。当前版本数据仅保存在本机。
