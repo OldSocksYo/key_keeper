@@ -70,7 +70,11 @@ class AccountService {
   }
 
   Future<List<MapEntry<int, AccountEntry>>> getAccountList({String? keyword}) async {
-    final entries = _box.toMap().entries.toList().cast<MapEntry<int, AccountEntry>>();
+    // 不可对 Hive toMap().entries 使用 .cast<MapEntry<int,...>>().toList() 再 sort：
+    // CastList 在 sort 时会按元素强转，导致 MapEntry<dynamic,...> 运行时失败。
+    final entries = <MapEntry<int, AccountEntry>>[
+      for (final e in _box.toMap().entries) MapEntry(e.key as int, e.value),
+    ];
     entries.sort((a, b) => b.value.updateTime.compareTo(a.value.updateTime));
     final filtered = entries.where((entry) {
       final v = entry.value;
@@ -107,7 +111,7 @@ class AccountService {
       final item = entry.value;
       if (item.typeText.trim().toLowerCase() == typeTextLower &&
           item.username.trim().toLowerCase() == usernameLower) {
-        return entry.key;
+        return entry.key as int;
       }
     }
     return null;

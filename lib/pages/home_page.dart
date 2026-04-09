@@ -16,12 +16,14 @@ class _HomePageState extends State<HomePage> {
   bool _searching = false;
   final _searchCtrl = TextEditingController();
   final _accountSearchNotifier = ValueNotifier<String>('');
-  final _accountKey = GlobalKey<AccountListPageState>();
+  /// 从新增/编辑返回时递增，驱动账号列表刷新。
+  final _accountListBump = ValueNotifier<int>(0);
 
   @override
   void dispose() {
     _searchCtrl.dispose();
     _accountSearchNotifier.dispose();
+    _accountListBump.dispose();
     super.dispose();
   }
 
@@ -61,9 +63,15 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
       );
+      if (!mounted) return;
       if (saved == true) {
-        await _accountKey.currentState?.refreshNow();
+        _searchCtrl.clear();
+        _accountSearchNotifier.value = '';
+        if (_searching) {
+          setState(() => _searching = false);
+        }
       }
+      _accountListBump.value++;
     }
   }
 
@@ -104,9 +112,9 @@ class _HomePageState extends State<HomePage> {
         index: _index,
         children: [
           AccountListPage(
-            key: _accountKey,
             accountService: appAccountService,
             searchNotifier: _accountSearchNotifier,
+            listBump: _accountListBump,
           ),
           MinePage(keyService: appKeyService, csvService: appCsvService),
         ],

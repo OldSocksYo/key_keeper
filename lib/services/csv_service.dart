@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:csv/csv.dart';
@@ -28,12 +27,13 @@ class CsvService {
           ]),
     ];
     final csv = const ListToCsvConverter().convert(rows);
-    final path = await FilePicker.platform.saveFile(
-      dialogTitle: 'Save plain CSV',
+    final bytes = Uint8List.fromList(utf8.encode(csv));
+    // Android / iOS 必须通过 bytes 保存，不能 saveFile 后再用 File 写入。
+    await FilePicker.platform.saveFile(
+      dialogTitle: '导出明文 CSV',
       fileName: 'account.csv',
+      bytes: bytes,
     );
-    if (path == null) return;
-    await File(path).writeAsString(csv);
   }
 
   Future<void> exportEncrypted() async {
@@ -47,12 +47,11 @@ class CsvService {
     final csv = const ListToCsvConverter().convert(rows);
     final userKey = await _keyService.getUserKey();
     final encrypted = _cryptoService.encryptBytes(userKey, Uint8List.fromList(utf8.encode(csv)));
-    final path = await FilePicker.platform.saveFile(
-      dialogTitle: 'Save encrypted CSV',
+    await FilePicker.platform.saveFile(
+      dialogTitle: '导出加密 CSV',
       fileName: 'encryptedAccount.csv',
+      bytes: encrypted,
     );
-    if (path == null) return;
-    await File(path).writeAsBytes(encrypted, flush: true);
   }
 
   Future<void> importPlain() async {

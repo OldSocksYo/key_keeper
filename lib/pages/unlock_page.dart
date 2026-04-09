@@ -92,6 +92,13 @@ class _UnlockPageState extends State<UnlockPage> {
     }
   }
 
+  /// 设置里选了生物识别但本机不支持时，用主密码进入后把偏好改为主密码，避免下次仍走无效分支。
+  Future<void> _syncUnlockMethodAfterFallbackSuccess() async {
+    if (_unlockMethod == AppConstants.unlockMethodBiometric && !_isBiometricAvailable) {
+      await appKeyService.setUnlockMethod(AppConstants.unlockMethodMasterPassword);
+    }
+  }
+
   Future<void> _unlockWithMasterPassword() async {
     final password = _passwordController.text;
     if (!_isMasterPasswordSet) {
@@ -105,6 +112,7 @@ class _UnlockPageState extends State<UnlockPage> {
         return;
       }
       await appKeyService.setAppMasterPassword(password);
+      await _syncUnlockMethodAfterFallbackSuccess();
       _isMasterPasswordSet = true;
       _confirmController.clear();
       if (!mounted) return;
@@ -116,6 +124,8 @@ class _UnlockPageState extends State<UnlockPage> {
     final ok = await appKeyService.verifyAppMasterPassword(password);
     if (!mounted) return;
     if (ok) {
+      await _syncUnlockMethodAfterFallbackSuccess();
+      if (!mounted) return;
       context.go('/home');
     } else {
       _showMessage('主密码错误，请重试');
@@ -127,13 +137,22 @@ class _UnlockPageState extends State<UnlockPage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
+  /// 已选生物识别但设备不支持时，在本页直接使用主密码，避免无法进入「我的」去切换。
+  bool get _useMasterPasswordFallback =>
+      _unlockMethod == AppConstants.unlockMethodBiometric && !_isBiometricAvailable;
+
+  bool get _showMasterPasswordFields =>
+      _unlockMethod == AppConstants.unlockMethodMasterPassword || _useMasterPasswordFallback;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
             Container(
               width: 88,
               height: 88,
@@ -157,21 +176,21 @@ class _UnlockPageState extends State<UnlockPage> {
               _unlockMethod == AppConstants.unlockMethodBiometric
                   ? (_isBiometricAvailable
                       ? "当前解锁方式：生物识别（${_availableBiometrics.join(', ')}）"
-                      : "已选择生物识别，但设备不支持，请在“我的-解锁方式”切换为主密码")
+                      : "已选择生物识别，但本机不支持，请使用下方主密码解锁")
                   : "当前解锁方式：主密码",
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 30),
-            if (_unlockMethod == AppConstants.unlockMethodBiometric)
+            if (_unlockMethod == AppConstants.unlockMethodBiometric && _isBiometricAvailable)
               ElevatedButton(
-                onPressed: (!_isBiometricAvailable || _authInProgress) ? null : _authenticate,
+                onPressed: _authInProgress ? null : _authenticate,
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
                   textStyle: const TextStyle(fontSize: 18),
                 ),
                 child: Text(_authInProgress ? "验证中..." : "解锁"),
               ),
-            if (_unlockMethod == AppConstants.unlockMethodMasterPassword) ...[
+            if (_showMasterPasswordFields) ...[
               SizedBox(
                 width: 320,
                 child: TextField(
@@ -208,6 +227,7 @@ class _UnlockPageState extends State<UnlockPage> {
             ],
           ],
         ),
+      ),
       ),
     );
   }

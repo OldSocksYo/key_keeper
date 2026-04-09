@@ -77,7 +77,13 @@ class _AccountDetailPageState extends State<AccountDetailPage> {
   Future<void> _save() async {
     final typeText = _typeCtrl.text.trim();
     final username = _userCtrl.text.trim();
-    if (typeText.isEmpty || username.isEmpty) return;
+    if (typeText.isEmpty || username.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请填写账户类型和用户名')),
+      );
+      return;
+    }
     final account = AccountEntry(
       typeText: typeText,
       username: username,

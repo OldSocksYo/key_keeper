@@ -9,10 +9,13 @@ class AccountListPage extends StatefulWidget {
     super.key,
     required this.accountService,
     required this.searchNotifier,
+    required this.listBump,
   });
 
   final AccountService accountService;
   final ValueNotifier<String> searchNotifier;
+  /// 从外部递增即可触发重新拉取列表（不依赖 GlobalKey / Navigator 返回值）。
+  final ValueNotifier<int> listBump;
 
   @override
   State<AccountListPage> createState() => AccountListPageState();
@@ -21,16 +24,23 @@ class AccountListPage extends StatefulWidget {
 class AccountListPageState extends State<AccountListPage> {
   List<MapEntry<int, AccountEntry>> _list = [];
 
+  late final VoidCallback _onListBump;
+
   @override
   void initState() {
     super.initState();
+    _onListBump = () {
+      _refresh();
+    };
     widget.searchNotifier.addListener(_refresh);
+    widget.listBump.addListener(_onListBump);
     _refresh();
   }
 
   @override
   void dispose() {
     widget.searchNotifier.removeListener(_refresh);
+    widget.listBump.removeListener(_onListBump);
     super.dispose();
   }
 

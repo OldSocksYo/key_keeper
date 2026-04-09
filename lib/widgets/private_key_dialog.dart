@@ -45,10 +45,14 @@ class _PrivateKeyDialogState extends State<PrivateKeyDialog> {
       content: TextField(
         controller: _controller,
         obscureText: _obscure,
-        enabled: !_alreadySet,
+        // 已保存后只读，但仍需可交互以便切换显示/隐藏；enabled: false 会导致眼睛按钮无法点击
+        readOnly: _alreadySet,
+        enableInteractiveSelection: true,
         decoration: InputDecoration(
           labelText: '个人密钥',
+          helperText: _alreadySet ? '点击右侧图标可显示或隐藏' : null,
           suffixIcon: IconButton(
+            tooltip: _obscure ? '显示' : '隐藏',
             onPressed: () => setState(() => _obscure = !_obscure),
             icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility),
           ),
