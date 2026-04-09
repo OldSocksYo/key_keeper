@@ -116,7 +116,11 @@ class _HomePageState extends State<HomePage> {
             searchNotifier: _accountSearchNotifier,
             listBump: _accountListBump,
           ),
-          MinePage(keyService: appKeyService, csvService: appCsvService),
+          MinePage(
+            keyService: appKeyService,
+            csvService: appCsvService,
+            accountService: appAccountService,
+          ),
         ],
       ),
       bottomNavigationBar: NavigationBar(

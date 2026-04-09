@@ -13,6 +13,7 @@ class UnlockPage extends StatefulWidget {
 
 class _UnlockPageState extends State<UnlockPage> {
   bool _isBiometricAvailable = false;
+  bool _isDeviceAuthAvailable = false;
   List<BiometricType> _availableBiometrics = [];
   bool _authInProgress = false;
   bool _isMasterPasswordSet = false;
@@ -34,7 +35,7 @@ class _UnlockPageState extends State<UnlockPage> {
     super.dispose();
   }
 
-  // 检查设备是否支持生物识别
+  // 检查设备是否支持生物识别 / 系统凭据（PIN、图案、锁屏密码）
   Future<void> _checkBiometricAvailability() async {
     try {
       final isAvailable = await localAuth.canCheckBiometrics;
@@ -42,7 +43,8 @@ class _UnlockPageState extends State<UnlockPage> {
       final biometrics = await localAuth.getAvailableBiometrics();
 
       setState(() {
-        _isBiometricAvailable = isAvailable && isDeviceSupported;
+        _isBiometricAvailable = isAvailable && biometrics.isNotEmpty;
+        _isDeviceAuthAvailable = isDeviceSupported;
         _availableBiometrics = biometrics;
       });
       final masterSet = await appKeyService.isAppMasterPasswordSet();
@@ -52,7 +54,7 @@ class _UnlockPageState extends State<UnlockPage> {
         _isMasterPasswordSet = masterSet;
         _unlockMethod = unlockMethod;
       });
-      if (_unlockMethod == AppConstants.unlockMethodBiometric && _isBiometricAvailable) {
+      if (_unlockMethod == AppConstants.unlockMethodBiometric && _isDeviceAuthAvailable) {
         WidgetsBinding.instance.addPostFrameCallback((_) => _authenticate());
       }
     } catch (e) {
@@ -62,7 +64,7 @@ class _UnlockPageState extends State<UnlockPage> {
 
   // 执行生物识别/系统密码验证
   Future<void> _authenticate() async {
-    if (_unlockMethod != AppConstants.unlockMethodBiometric || !_isBiometricAvailable) return;
+    if (_unlockMethod != AppConstants.unlockMethodBiometric || !_isDeviceAuthAvailable) return;
     if (_authInProgress) return;
     _authInProgress = true;
     bool authenticated = false;
@@ -94,7 +96,7 @@ class _UnlockPageState extends State<UnlockPage> {
 
   /// 设置里选了生物识别但本机不支持时，用主密码进入后把偏好改为主密码，避免下次仍走无效分支。
   Future<void> _syncUnlockMethodAfterFallbackSuccess() async {
-    if (_unlockMethod == AppConstants.unlockMethodBiometric && !_isBiometricAvailable) {
+    if (_unlockMethod == AppConstants.unlockMethodBiometric && !_isDeviceAuthAvailable) {
       await appKeyService.setUnlockMethod(AppConstants.unlockMethodMasterPassword);
     }
   }
@@ -139,7 +141,7 @@ class _UnlockPageState extends State<UnlockPage> {
 
   /// 已选生物识别但设备不支持时，在本页直接使用主密码，避免无法进入「我的」去切换。
   bool get _useMasterPasswordFallback =>
-      _unlockMethod == AppConstants.unlockMethodBiometric && !_isBiometricAvailable;
+      _unlockMethod == AppConstants.unlockMethodBiometric && !_isDeviceAuthAvailable;
 
   bool get _showMasterPasswordFields =>
       _unlockMethod == AppConstants.unlockMethodMasterPassword || _useMasterPasswordFallback;
@@ -174,14 +176,16 @@ class _UnlockPageState extends State<UnlockPage> {
             const SizedBox(height: 40),
             Text(
               _unlockMethod == AppConstants.unlockMethodBiometric
-                  ? (_isBiometricAvailable
-                      ? "当前解锁方式：生物识别（${_availableBiometrics.join(', ')}）"
+                  ? (_isDeviceAuthAvailable
+                      ? (_isBiometricAvailable
+                          ? "当前解锁方式：生物识别（${_availableBiometrics.join(', ')}）"
+                          : "当前解锁方式：系统凭据（PIN / 图案 / 锁屏密码）")
                       : "已选择生物识别，但本机不支持，请使用下方主密码解锁")
                   : "当前解锁方式：主密码",
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 30),
-            if (_unlockMethod == AppConstants.unlockMethodBiometric && _isBiometricAvailable)
+            if (_unlockMethod == AppConstants.unlockMethodBiometric && _isDeviceAuthAvailable)
               ElevatedButton(
                 onPressed: _authInProgress ? null : _authenticate,
                 style: ElevatedButton.styleFrom(

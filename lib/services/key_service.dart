@@ -54,6 +54,13 @@ class KeyService {
     return _cryptoService.decrypt(initSecret, encrypted);
   }
 
+  Future<bool> verifyUserKey(String input) async {
+    final normalized = input.trim();
+    if (normalized.isEmpty) return false;
+    final current = await getUserKey();
+    return normalized == current;
+  }
+
   Future<bool> isAppMasterPasswordSet() async {
     final value = await _secureStorage.read(key: AppConstants.appMasterPasswordHashName);
     return value != null && value.isNotEmpty;
@@ -73,6 +80,20 @@ class KeyService {
     if (stored == null || stored.isEmpty) return false;
     final incoming = _sha256Hex(password.trim());
     return incoming == stored;
+  }
+
+  Future<void> changeAppMasterPassword({
+    required String oldPassword,
+    required String newPassword,
+  }) async {
+    final hasOld = await isAppMasterPasswordSet();
+    if (hasOld) {
+      final ok = await verifyAppMasterPassword(oldPassword);
+      if (!ok) {
+        throw ArgumentError('旧主密码错误');
+      }
+    }
+    await setAppMasterPassword(newPassword);
   }
 
   Future<String> getUnlockMethod() async {

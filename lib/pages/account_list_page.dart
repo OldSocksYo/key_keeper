@@ -60,30 +60,32 @@ class AccountListPageState extends State<AccountListPage> {
         itemCount: _list.length,
         itemBuilder: (context, index) {
           final item = _list[index];
-          return ListTile(
-            leading: AccountIcon(typeText: item.value.typeText),
-            title: Text(item.value.typeText),
-            subtitle: Text(item.value.username),
-            trailing: Wrap(
-              spacing: 6,
-              children: [
-                if (item.value.hasPassword) const Chip(label: Text('密码')),
-                if (item.value.hasTotp) const Chip(label: Text('TOTP')),
-              ],
-            ),
-            onTap: () async {
-              final ok = await Navigator.push<bool>(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => AccountDetailPage(
-                    args: AccountDetailArgs(mode: AccountDetailMode.view, key: item.key),
-                    accountService: widget.accountService,
+          return Dismissible(
+            key: ValueKey('account_${item.key}'),
+            direction: DismissDirection.endToStart,
+            background: Container(
+              alignment: Alignment.centerRight,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              color: Theme.of(context).colorScheme.errorContainer,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.delete_outline,
+                    color: Theme.of(context).colorScheme.onErrorContainer,
                   ),
-                ),
-              );
-              if (ok == true) await _refresh();
-            },
-            onLongPress: () async {
+                  const SizedBox(width: 8),
+                  Text(
+                    '删除',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onErrorContainer,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            confirmDismiss: (_) async {
               final delete = await showDialog<bool>(
                 context: context,
                 builder: (_) => AlertDialog(
@@ -100,11 +102,36 @@ class AccountListPageState extends State<AccountListPage> {
                   ],
                 ),
               );
-              if (delete == true) {
-                await widget.accountService.deleteAccount(item.key);
-                await _refresh();
-              }
+              return delete == true;
             },
+            onDismissed: (_) async {
+              await widget.accountService.deleteAccount(item.key);
+              await _refresh();
+            },
+            child: ListTile(
+              leading: AccountIcon(typeText: item.value.typeText),
+              title: Text(item.value.typeText),
+              subtitle: Text(item.value.username),
+              trailing: Wrap(
+                spacing: 6,
+                children: [
+                  if (item.value.hasPassword) const Chip(label: Text('密码')),
+                  if (item.value.hasTotp) const Chip(label: Text('TOTP')),
+                ],
+              ),
+              onTap: () async {
+                final ok = await Navigator.push<bool>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => AccountDetailPage(
+                      args: AccountDetailArgs(mode: AccountDetailMode.view, key: item.key),
+                      accountService: widget.accountService,
+                    ),
+                  ),
+                );
+                if (ok == true) await _refresh();
+              },
+            ),
           );
         },
       ),

@@ -37,6 +37,7 @@ class _AccountDetailPageState extends State<AccountDetailPage> {
   Timer? _timer;
   String _totpPreview = '------';
   int _totpRemain = 30;
+  List<String> _typeOptions = [...AppConstants.accountTypePresets];
 
   bool get _isInsert => widget.args.mode == AccountDetailMode.insert;
   bool get _isReadOnly => !_isInsert && !_editing;
@@ -46,6 +47,7 @@ class _AccountDetailPageState extends State<AccountDetailPage> {
     super.initState();
     _totpCtrl.addListener(_updateTotpPreview);
     _timer = Timer.periodic(const Duration(seconds: 1), (_) => _updateTotpPreview());
+    _loadTypeOptions();
     _load();
   }
 
@@ -72,6 +74,56 @@ class _AccountDetailPageState extends State<AccountDetailPage> {
       _totpCtrl.text = account.totpSecret ?? '';
     });
     _updateTotpPreview();
+  }
+
+  Future<void> _loadTypeOptions() async {
+    final options = await widget.accountService.getAccountTypeSuggestions();
+    if (!mounted) return;
+    setState(() => _typeOptions = options);
+  }
+
+  Future<void> _addTypeOption() async {
+    var input = '';
+    final added = await showDialog<String>(
+      context: context,
+      builder: (_) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('新增账号类型'),
+          content: TextField(
+            autofocus: true,
+            onChanged: (value) => setDialogState(() => input = value),
+            onSubmitted: (value) {
+              final text = value.trim();
+              if (text.isNotEmpty) {
+                Navigator.pop(context, text);
+              }
+            },
+            decoration: const InputDecoration(
+              hintText: '例如：知乎 / 小红书 / Steam',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: input.trim().isEmpty
+                  ? null
+                  : () => Navigator.pop(context, input.trim()),
+              child: const Text('添加'),
+            ),
+          ],
+        ),
+      ),
+    );
+    final value = (added ?? '').trim();
+    if (value.isEmpty) return;
+    final exists = _typeOptions.any((e) => e.toLowerCase() == value.toLowerCase());
+    if (!exists) {
+      setState(() => _typeOptions = [..._typeOptions, value]);
+    }
+    _typeCtrl.text = value;
   }
 
   Future<void> _save() async {
@@ -246,10 +298,19 @@ class _AccountDetailPageState extends State<AccountDetailPage> {
             const SizedBox(height: 16),
             const Text('快速选择类型'),
             const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: _addTypeOption,
+                icon: const Icon(Icons.add),
+                label: const Text('新增类型'),
+              ),
+            ),
+            const SizedBox(height: 8),
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: AppConstants.accountTypePresets
+              children: _typeOptions
                   .map((e) => ChoiceChip(
                         label: Text(e),
                         selected: _typeCtrl.text == e,

@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import 'package:key_keeper/common/constants.dart';
 import 'package:key_keeper/models/account_entry.dart';
 import 'package:key_keeper/services/crypto_service.dart';
 import 'package:key_keeper/services/key_service.dart';
@@ -104,6 +105,72 @@ class AccountService {
         item.username.trim().toLowerCase() == usernameLower);
   }
 
+  /// 使用新个人密钥对全部账户字段进行重加密。
+  /// 若持久化新密钥失败，会回滚到账户重加密前状态。
+  Future<void> rotateUserKey({
+    required String oldUserKey,
+    required String newUserKey,
+    required Future<void> Function() persistNewKey,
+  }) async {
+    final oldNormalized = oldUserKey.trim();
+    final newNormalized = newUserKey.trim();
+    if (oldNormalized.isEmpty || newNormalized.isEmpty) {
+      throw ArgumentError('密钥不能为空');
+    }
+
+    final original = <int, AccountEntry>{
+      for (final e in _box.toMap().entries) e.key as int: _copyEntry(e.value),
+    };
+
+    final reEncrypted = <int, AccountEntry>{};
+    for (final entry in original.entries) {
+      final value = entry.value;
+      final rawPassword = (value.passwordSecret ?? '').trim();
+      final rawTotp = (value.totpSecret ?? '').trim();
+
+      final decryptedPassword =
+          rawPassword.isEmpty ? null : _cryptoService.decrypt(oldNormalized, rawPassword);
+      final decryptedTotp = rawTotp.isEmpty ? null : _cryptoService.decrypt(oldNormalized, rawTotp);
+
+      final nextPassword =
+          (decryptedPassword ?? '').isEmpty ? null : _cryptoService.encrypt(newNormalized, decryptedPassword!);
+      final nextTotp = (decryptedTotp ?? '').isEmpty ? null : _cryptoService.encrypt(newNormalized, decryptedTotp!);
+
+      reEncrypted[entry.key] = AccountEntry(
+        typeText: value.typeText,
+        username: value.username,
+        passwordSecret: nextPassword,
+        totpSecret: nextTotp,
+        updateTime: value.updateTime,
+      );
+    }
+
+    await _box.putAll(reEncrypted);
+    try {
+      await persistNewKey();
+    } catch (_) {
+      await _box.putAll(original);
+      rethrow;
+    }
+  }
+
+  /// 返回账户类型建议：预置类型 + 已保存账户中的自定义类型（去重）。
+  Future<List<String>> getAccountTypeSuggestions() async {
+    final result = <String>[...AppConstants.accountTypePresets];
+    final exists = result.map((e) => e.toLowerCase()).toSet();
+    final entries = _box.toMap().entries.toList();
+    entries.sort((a, b) => (b.value.updateTime).compareTo(a.value.updateTime));
+    for (final entry in entries) {
+      final typeText = entry.value.typeText.trim();
+      if (typeText.isEmpty) continue;
+      final lower = typeText.toLowerCase();
+      if (exists.contains(lower)) continue;
+      exists.add(lower);
+      result.add(typeText);
+    }
+    return result;
+  }
+
   int? _findKey(String typeText, String username) {
     final typeTextLower = typeText.trim().toLowerCase();
     final usernameLower = username.trim().toLowerCase();
@@ -131,6 +198,16 @@ class AccountService {
       passwordSecret: password,
       totpSecret: totp,
       updateTime: encrypted.updateTime,
+    );
+  }
+
+  AccountEntry _copyEntry(AccountEntry source) {
+    return AccountEntry(
+      typeText: source.typeText,
+      username: source.username,
+      passwordSecret: source.passwordSecret,
+      totpSecret: source.totpSecret,
+      updateTime: source.updateTime,
     );
   }
 }
