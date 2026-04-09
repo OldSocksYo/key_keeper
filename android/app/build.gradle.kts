@@ -42,7 +42,8 @@ android {
         if (keystorePropertiesFile.exists()) {
             create("release") {
                 val storeFilePath = keystoreProperties["storeFile"] as String
-                storeFile = file(storeFilePath)
+                // key.properties 位于 android/，这里用 rootProject 解析，避免被误解析成 android/app/
+                storeFile = rootProject.file(storeFilePath)
                 storePassword = keystoreProperties["storePassword"] as String
                 keyAlias = keystoreProperties["keyAlias"] as String
                 keyPassword = keystoreProperties["keyPassword"] as String
@@ -59,6 +60,12 @@ android {
             }
         }
     }
+}
+
+dependencies {
+    // 修复 release 阶段 R8 对 Tink 依赖注解类的缺失报错
+    implementation("com.google.errorprone:error_prone_annotations:2.28.0")
+    implementation("com.google.code.findbugs:jsr305:3.0.2")
 }
 
 flutter {
