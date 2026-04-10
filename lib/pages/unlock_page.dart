@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:key_keeper/common/constants.dart';
 import 'package:local_auth/local_auth.dart';
@@ -18,6 +19,7 @@ class _UnlockPageState extends State<UnlockPage> {
   bool _authInProgress = false;
   bool _isMasterPasswordSet = false;
   String _unlockMethod = AppConstants.unlockMethodBiometric;
+  bool _preferMasterPasswordEntry = false;
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmController = TextEditingController();
   bool _obscureMaster = true;
@@ -77,6 +79,8 @@ class _UnlockPageState extends State<UnlockPage> {
           stickyAuth: true,
         ),
       );
+    } on PlatformException catch (e) {
+      debugPrint("验证失败（PlatformException）：code=${e.code}, message=${e.message}");
     } catch (e) {
       debugPrint("验证失败：$e");
     } finally {
@@ -88,8 +92,13 @@ class _UnlockPageState extends State<UnlockPage> {
       // 验证成功：跳转到首页
       context.go('/home');
     } else {
+      if (_isMasterPasswordSet && mounted) {
+        setState(() => _preferMasterPasswordEntry = true);
+      }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("验证失败，请重试")),
+        SnackBar(
+          content: Text(_isMasterPasswordSet ? "验证失败，可改用主密码解锁" : "验证失败，请重试"),
+        ),
       );
     }
   }
@@ -144,7 +153,11 @@ class _UnlockPageState extends State<UnlockPage> {
       _unlockMethod == AppConstants.unlockMethodBiometric && !_isDeviceAuthAvailable;
 
   bool get _showMasterPasswordFields =>
-      _unlockMethod == AppConstants.unlockMethodMasterPassword || _useMasterPasswordFallback;
+      _unlockMethod == AppConstants.unlockMethodMasterPassword ||
+      _useMasterPasswordFallback ||
+      (_unlockMethod == AppConstants.unlockMethodBiometric &&
+          _isMasterPasswordSet &&
+          _preferMasterPasswordEntry);
 
   @override
   Widget build(BuildContext context) {
@@ -193,6 +206,14 @@ class _UnlockPageState extends State<UnlockPage> {
                   textStyle: const TextStyle(fontSize: 18),
                 ),
                 child: Text(_authInProgress ? "验证中..." : "解锁"),
+              ),
+            if (_unlockMethod == AppConstants.unlockMethodBiometric &&
+                _isDeviceAuthAvailable &&
+                _isMasterPasswordSet &&
+                !_showMasterPasswordFields)
+              TextButton(
+                onPressed: () => setState(() => _preferMasterPasswordEntry = true),
+                child: const Text('改用主密码解锁'),
               ),
             if (_showMasterPasswordFields) ...[
               SizedBox(

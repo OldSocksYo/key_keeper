@@ -77,12 +77,17 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+    // 仅在真正进入后台（paused）时标记上锁，避免生物识别弹窗触发 inactive 导致误锁循环。
+    if (state == AppLifecycleState.paused) {
       _wentBackground = true;
     }
     if (state == AppLifecycleState.resumed && _wentBackground) {
       _wentBackground = false;
-      appRouter.go('/unlock');
+      // 生物识别系统弹窗也会触发生命周期变化；若当前已在解锁页，不要重复跳转，避免打断认证流程。
+      final currentPath = appRouter.routeInformationProvider.value.uri.path;
+      if (currentPath != '/unlock') {
+        appRouter.go('/unlock');
+      }
     }
   }
 
