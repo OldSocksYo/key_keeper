@@ -1,9 +1,11 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:csv/csv.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:key_keeper/models/account_entry.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:key_keeper/services/account_service.dart';
 import 'package:key_keeper/services/crypto_service.dart';
@@ -91,14 +93,19 @@ class CsvService {
   }) async {
     switch (destination) {
       case CsvExportDestination.systemShare:
-        await SharePlus.instance.share(
-          ShareParams(
-            files: [
-              XFile.fromData(bytes, name: fileName, mimeType: shareMimeType),
-            ],
-            title: 'KeyKeeper 导出',
-          ),
-        );
+        final dir = await getTemporaryDirectory();
+        final file = File('${dir.path}/$fileName');
+        await file.writeAsBytes(bytes, flush: true);
+        try {
+          await SharePlus.instance.share(
+            ShareParams(
+              files: [XFile(file.path, mimeType: shareMimeType)],
+              title: 'KeyKeeper 导出',
+            ),
+          );
+        } finally {
+          try { await file.delete(); } catch (_) {}
+        }
       case CsvExportDestination.saveToFile:
         await FilePicker.platform.saveFile(
           dialogTitle: saveDialogTitle,

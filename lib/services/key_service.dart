@@ -112,6 +112,44 @@ class KeyService {
     await _secureStorage.write(key: AppConstants.unlockMethodName, value: method);
   }
 
+  /// 从快速选择中隐藏的类型（按小写去重）。
+  Future<Set<String>> getHiddenAccountTypeSuggestions() async {
+    final raw = await _secureStorage.read(key: AppConstants.hiddenAccountTypeSuggestionsKey);
+    if (raw == null || raw.isEmpty) return {};
+    try {
+      final list = jsonDecode(raw) as List<dynamic>;
+      return list.map((e) => e.toString().trim().toLowerCase()).where((e) => e.isNotEmpty).toSet();
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> hideAccountTypeSuggestion(String typeText) async {
+    final normalized = typeText.trim().toLowerCase();
+    if (normalized.isEmpty) return;
+    final hidden = await getHiddenAccountTypeSuggestions();
+    hidden.add(normalized);
+    await _secureStorage.write(
+      key: AppConstants.hiddenAccountTypeSuggestionsKey,
+      value: jsonEncode(hidden.toList()..sort()),
+    );
+  }
+
+  Future<void> unhideAccountTypeSuggestion(String typeText) async {
+    final normalized = typeText.trim().toLowerCase();
+    if (normalized.isEmpty) return;
+    final hidden = await getHiddenAccountTypeSuggestions();
+    if (!hidden.remove(normalized)) return;
+    if (hidden.isEmpty) {
+      await _secureStorage.delete(key: AppConstants.hiddenAccountTypeSuggestionsKey);
+    } else {
+      await _secureStorage.write(
+        key: AppConstants.hiddenAccountTypeSuggestionsKey,
+        value: jsonEncode(hidden.toList()..sort()),
+      );
+    }
+  }
+
   String _randomBytesBase64(int len) {
     final bytes = List<int>.generate(len, (_) => _random.nextInt(256));
     return base64Encode(bytes);

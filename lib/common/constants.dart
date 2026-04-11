@@ -10,6 +10,8 @@ class AppConstants {
   static const String unlockMethodName = 'unlock_method';
   static const String unlockMethodBiometric = 'biometric';
   static const String unlockMethodMasterPassword = 'master_password';
+  /// 从「快速选择类型」中移除的类型（小写），JSON 数组存于安全存储。
+  static const String hiddenAccountTypeSuggestionsKey = 'hidden_account_type_suggestions';
 
   static const List<String> codeAccountType = <String>[
     'GitHub',

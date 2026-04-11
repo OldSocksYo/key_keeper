@@ -154,8 +154,9 @@ class AccountService {
     }
   }
 
-  /// 返回账户类型建议：预置类型 + 已保存账户中的自定义类型（去重）。
+  /// 返回账户类型建议：预置类型 + 已保存账户中的自定义类型（去重），并排除用户在快速选择中删除项。
   Future<List<String>> getAccountTypeSuggestions() async {
+    final hidden = await _keyService.getHiddenAccountTypeSuggestions();
     final result = <String>[...AppConstants.accountTypePresets];
     final exists = result.map((e) => e.toLowerCase()).toSet();
     final entries = _box.toMap().entries.toList();
@@ -168,8 +169,18 @@ class AccountService {
       exists.add(lower);
       result.add(typeText);
     }
-    return result;
+    return [
+      for (final e in result)
+        if (!hidden.contains(e.trim().toLowerCase())) e,
+    ];
   }
+
+  /// 从「快速选择类型」中移除该项（不影响已有账户数据）；再次「新增类型」同名可恢复。
+  Future<void> removeAccountTypeFromQuickPick(String typeText) =>
+      _keyService.hideAccountTypeSuggestion(typeText);
+
+  Future<void> restoreAccountTypeToQuickPick(String typeText) =>
+      _keyService.unhideAccountTypeSuggestion(typeText);
 
   int? _findKey(String typeText, String username) {
     final typeTextLower = typeText.trim().toLowerCase();

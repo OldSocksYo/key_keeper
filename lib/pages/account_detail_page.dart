@@ -122,11 +122,20 @@ class _AccountDetailPageState extends State<AccountDetailPage> {
     );
     final value = (added ?? '').trim();
     if (value.isEmpty) return;
+    await widget.accountService.restoreAccountTypeToQuickPick(value);
     final exists = _typeOptions.any((e) => e.toLowerCase() == value.toLowerCase());
     if (!exists) {
       setState(() => _typeOptions = [..._typeOptions, value]);
     }
     _typeCtrl.text = value;
+  }
+
+  Future<void> _removeTypeOption(String type) async {
+    await widget.accountService.removeAccountTypeFromQuickPick(type);
+    if (!mounted) return;
+    setState(() {
+      _typeOptions = _typeOptions.where((e) => e != type).toList();
+    });
   }
 
   Future<void> _save() async {
@@ -342,11 +351,14 @@ class _AccountDetailPageState extends State<AccountDetailPage> {
               spacing: 8,
               runSpacing: 8,
               children: _typeOptions
-                  .map((e) => ChoiceChip(
-                        label: Text(e),
-                        selected: _typeCtrl.text == e,
-                        onSelected: (_) => setState(() => _typeCtrl.text = e),
-                      ))
+                  .map(
+                    (e) => InputChip(
+                      label: Text(e),
+                      selected: _typeCtrl.text == e,
+                      onSelected: (_) => setState(() => _typeCtrl.text = e),
+                      onDeleted: () => _removeTypeOption(e),
+                    ),
+                  )
                   .toList(),
             ),
           ],
