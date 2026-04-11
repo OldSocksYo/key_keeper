@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:key_keeper/main.dart';
 import 'package:key_keeper/models/account_entry.dart';
 import 'package:key_keeper/pages/account_detail_page.dart';
 import 'package:key_keeper/services/account_service.dart';
@@ -112,13 +115,9 @@ class AccountListPageState extends State<AccountListPage> {
               leading: AccountIcon(typeText: item.value.typeText),
               title: Text(item.value.typeText),
               subtitle: Text(item.value.username),
-              trailing: Wrap(
-                spacing: 6,
-                children: [
-                  if (item.value.hasPassword) const Chip(label: Text('密码')),
-                  if (item.value.hasTotp) const Chip(label: Text('TOTP')),
-                ],
-              ),
+              trailing: item.value.hasTotp
+                  ? _AccountListTotpTrailing(secret: item.value.totpSecret ?? '')
+                  : null,
               onTap: () async {
                 final ok = await Navigator.push<bool>(
                   context,
@@ -135,6 +134,87 @@ class AccountListPageState extends State<AccountListPage> {
           );
         },
       ),
+    );
+  }
+}
+
+/// 列表项右侧展示当前 TOTP（每秒刷新），无文字标签。
+class _AccountListTotpTrailing extends StatefulWidget {
+  const _AccountListTotpTrailing({required this.secret});
+
+  final String secret;
+
+  @override
+  State<_AccountListTotpTrailing> createState() => _AccountListTotpTrailingState();
+}
+
+class _AccountListTotpTrailingState extends State<_AccountListTotpTrailing> {
+  Timer? _timer;
+  bool _revealed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final raw = widget.secret.trim().toUpperCase();
+    if (raw.isEmpty || !appTotpService.isValidBase32(raw)) {
+      return const SizedBox.shrink();
+    }
+    final code = appTotpService.generateCode(raw);
+    final remain = appTotpService.getRemainingSeconds();
+    final colorScheme = Theme.of(context).colorScheme;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+          iconSize: 20,
+          tooltip: _revealed ? '隐藏验证码' : '显示验证码',
+          onPressed: () => setState(() => _revealed = !_revealed),
+          icon: Icon(
+            _revealed ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+            color: colorScheme.primary,
+          ),
+        ),
+        const SizedBox(width: 2),
+        GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () => setState(() => _revealed = !_revealed),
+          child: Text(
+            _revealed ? code : '••••••',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
+              letterSpacing: _revealed ? 2 : 1,
+              color: _revealed ? colorScheme.primary : colorScheme.onSurfaceVariant,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(
+            value: remain / 30,
+            strokeWidth: 2.5,
+            color: colorScheme.primary,
+          ),
+        ),
+      ],
     );
   }
 }

@@ -31,6 +31,8 @@ class _AccountDetailPageState extends State<AccountDetailPage> {
   final _userCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   final _totpCtrl = TextEditingController();
+  /// 新增/编辑时由开关控制；详情只读时与账户是否含 TOTP 一致。
+  bool _totpEnabled = false;
   bool _editing = false;
   bool _passwordObscure = true;
   bool _totpObscure = true;
@@ -72,6 +74,7 @@ class _AccountDetailPageState extends State<AccountDetailPage> {
       _userCtrl.text = account.username;
       _passwordCtrl.text = account.passwordSecret ?? '';
       _totpCtrl.text = account.totpSecret ?? '';
+      _totpEnabled = account.hasTotp;
     });
     _updateTotpPreview();
   }
@@ -136,11 +139,29 @@ class _AccountDetailPageState extends State<AccountDetailPage> {
       );
       return;
     }
+    final totpTrim = _totpCtrl.text.trim();
+    if (_totpEnabled) {
+      if (totpTrim.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已开启 TOTP，请填写密钥')),
+        );
+        return;
+      }
+      if (!appTotpService.isValidBase32(totpTrim.toUpperCase())) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('TOTP 密钥格式无效（应为 Base32）')),
+        );
+        return;
+      }
+    }
+
     final account = AccountEntry(
       typeText: typeText,
       username: username,
       passwordSecret: _passwordCtrl.text.trim().isEmpty ? null : _passwordCtrl.text.trim(),
-      totpSecret: _totpCtrl.text.trim().isEmpty ? null : _totpCtrl.text.trim(),
+      totpSecret: _totpEnabled ? totpTrim : null,
       updateTime: DateTime.now().millisecondsSinceEpoch ~/ 1000,
     );
     if (_isInsert) {
@@ -232,68 +253,78 @@ class _AccountDetailPageState extends State<AccountDetailPage> {
               ),
             ),
           ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _totpCtrl,
-            readOnly: _isReadOnly,
-            obscureText: _totpObscure,
-            decoration: InputDecoration(
-              labelText: 'TOTP 密钥（可选）',
-              suffixIcon: IconButton(
-                onPressed: () => setState(() => _totpObscure = !_totpObscure),
-                icon: Icon(_totpObscure ? Icons.visibility_off : Icons.visibility),
+          if (_isInsert || _editing) ...[
+            const SizedBox(height: 8),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('启用两步验证（TOTP）'),
+              value: _totpEnabled,
+              onChanged: (on) {
+                setState(() {
+                  _totpEnabled = on;
+                  if (!on) _totpCtrl.clear();
+                });
+                _updateTotpPreview();
+              },
+            ),
+          ],
+          if (_totpEnabled) ...[
+            const SizedBox(height: 4),
+            TextField(
+              controller: _totpCtrl,
+              readOnly: _isReadOnly,
+              obscureText: _totpObscure,
+              decoration: InputDecoration(
+                labelText: 'TOTP 密钥',
+                suffixIcon: IconButton(
+                  onPressed: () => setState(() => _totpObscure = !_totpObscure),
+                  icon: Icon(_totpObscure ? Icons.visibility_off : Icons.visibility),
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('实时 TOTP 预览'),
-                      const SizedBox(height: 6),
-                      Text(
-                        _totpPreview,
-                        style: const TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 4,
-                        ),
+            const SizedBox(height: 12),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      _totpPreview,
+                      style: const TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 4,
                       ),
-                    ],
-                  ),
-                  Column(
-                    children: [
-                      SizedBox(
-                        width: 38,
-                        height: 38,
-                        child: CircularProgressIndicator(
-                          value: _totpRemain / 30,
-                          strokeWidth: 4,
+                    ),
+                    Column(
+                      children: [
+                        SizedBox(
+                          width: 38,
+                          height: 38,
+                          child: CircularProgressIndicator(
+                            value: _totpRemain / 30,
+                            strokeWidth: 4,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text('${_totpRemain}s'),
-                    ],
-                  ),
-                ],
+                        const SizedBox(height: 4),
+                        Text('${_totpRemain}s'),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          if (_totpCtrl.text.trim().isNotEmpty &&
-              !appTotpService.isValidBase32(_totpCtrl.text.trim().toUpperCase()))
-            const Padding(
-              padding: EdgeInsets.only(top: 8),
-              child: Text(
-                'TOTP 密钥格式无效（应为 Base32）',
-                style: TextStyle(color: Colors.red),
+            if (_totpCtrl.text.trim().isNotEmpty &&
+                !appTotpService.isValidBase32(_totpCtrl.text.trim().toUpperCase()))
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: Text(
+                  'TOTP 密钥格式无效（应为 Base32）',
+                  style: TextStyle(color: Colors.red),
+                ),
               ),
-            ),
+          ],
           if (_isInsert || _editing) ...[
             const SizedBox(height: 16),
             const Text('快速选择类型'),
