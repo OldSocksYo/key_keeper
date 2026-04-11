@@ -16,7 +16,8 @@ class AccountService {
     final existingKey = _findKey(account.typeText, account.username);
     AccountEntry? existing;
     if (existingKey != null) {
-      existing = await getAccount(existingKey);
+      final raw = _box.get(existingKey);
+      if (raw != null) existing = _decryptEntryWith(userKey, raw);
     }
 
     final mergedPassword =
@@ -67,29 +68,28 @@ class AccountService {
   Future<AccountEntry?> getAccount(int key) async {
     final raw = _box.get(key);
     if (raw == null) return null;
-    return _decryptEntry(raw);
+    final userKey = await _keyService.getUserKey();
+    return _decryptEntryWith(userKey, raw);
   }
 
   Future<List<MapEntry<int, AccountEntry>>> getAccountList({String? keyword}) async {
-    // 不可对 Hive toMap().entries 使用 .cast<MapEntry<int,...>>().toList() 再 sort：
-    // CastList 在 sort 时会按元素强转，导致 MapEntry<dynamic,...> 运行时失败。
     final entries = <MapEntry<int, AccountEntry>>[
       for (final e in _box.toMap().entries) MapEntry(e.key as int, e.value),
     ];
     entries.sort((a, b) => b.value.updateTime.compareTo(a.value.updateTime));
+    final q = keyword?.trim().toLowerCase() ?? '';
     final filtered = entries.where((entry) {
       final v = entry.value;
-      final q = keyword?.trim().toLowerCase() ?? '';
-      final keywordOk =
-          q.isEmpty || v.typeText.toLowerCase().contains(q) || v.username.toLowerCase().contains(q);
-      return keywordOk;
+      return q.isEmpty ||
+          v.typeText.toLowerCase().contains(q) ||
+          v.username.toLowerCase().contains(q);
     }).toList();
 
-    final out = <MapEntry<int, AccountEntry>>[];
-    for (final entry in filtered) {
-      out.add(MapEntry(entry.key, await _decryptEntry(entry.value)));
-    }
-    return out;
+    final userKey = await _keyService.getUserKey();
+    return [
+      for (final entry in filtered)
+        MapEntry(entry.key, _decryptEntryWith(userKey, entry.value)),
+    ];
   }
 
   Future<List<MapEntry<int, AccountEntry>>> getTotpList({String? keyword}) async {
@@ -184,8 +184,7 @@ class AccountService {
     return null;
   }
 
-  Future<AccountEntry> _decryptEntry(AccountEntry encrypted) async {
-    final userKey = await _keyService.getUserKey();
+  AccountEntry _decryptEntryWith(String userKey, AccountEntry encrypted) {
     final password = (encrypted.passwordSecret ?? '').isEmpty
         ? null
         : _cryptoService.decrypt(userKey, encrypted.passwordSecret!);

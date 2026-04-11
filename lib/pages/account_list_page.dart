@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:key_keeper/main.dart';
 import 'package:key_keeper/models/account_entry.dart';
 import 'package:key_keeper/pages/account_detail_page.dart';
@@ -63,54 +64,42 @@ class AccountListPageState extends State<AccountListPage> {
         itemCount: _list.length,
         itemBuilder: (context, index) {
           final item = _list[index];
-          return Dismissible(
+          final colorScheme = Theme.of(context).colorScheme;
+          return Slidable(
             key: ValueKey('account_${item.key}'),
-            direction: DismissDirection.endToStart,
-            background: Container(
-              alignment: Alignment.centerRight,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              color: Theme.of(context).colorScheme.errorContainer,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.delete_outline,
-                    color: Theme.of(context).colorScheme.onErrorContainer,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '删除',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onErrorContainer,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            confirmDismiss: (_) async {
-              final delete = await showDialog<bool>(
-                context: context,
-                builder: (_) => AlertDialog(
-                  title: const Text('是否删除此账户？'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: const Text('取消'),
-                    ),
-                    FilledButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      child: const Text('删除'),
-                    ),
-                  ],
+            endActionPane: ActionPane(
+              motion: const BehindMotion(),
+              extentRatio: 0.26,
+              children: [
+                SlidableAction(
+                  onPressed: (_) async {
+                    final delete = await showDialog<bool>(
+                      context: context,
+                      builder: (_) => AlertDialog(
+                        title: const Text('是否删除此账户？'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('取消'),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text('删除'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (!context.mounted || delete != true) return;
+                    await widget.accountService.deleteAccount(item.key);
+                    await _refresh();
+                  },
+                  backgroundColor: colorScheme.errorContainer,
+                  foregroundColor: colorScheme.onErrorContainer,
+                  icon: Icons.delete_outline,
+                  label: '删除',
                 ),
-              );
-              return delete == true;
-            },
-            onDismissed: (_) async {
-              await widget.accountService.deleteAccount(item.key);
-              await _refresh();
-            },
+              ],
+            ),
             child: ListTile(
               leading: AccountIcon(typeText: item.value.typeText),
               title: Text(item.value.typeText),

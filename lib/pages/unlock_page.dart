@@ -23,6 +23,7 @@ class _UnlockPageState extends State<UnlockPage> {
   bool _isMasterPasswordSet = false;
   String _unlockMethod = AppConstants.unlockMethodBiometric;
   bool _preferMasterPasswordEntry = false;
+  bool _biometricAuthFailed = false;
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmController = TextEditingController();
   bool _obscureMaster = true;
@@ -75,13 +76,13 @@ class _UnlockPageState extends State<UnlockPage> {
       return;
     }
     if (_authInProgress) return;
-    _authInProgress = true;
+    setState(() => _authInProgress = true);
     bool authenticated = false;
     try {
       authenticated = await localAuth.authenticate(
         localizedReason: "验证身份以解锁 KeyKeeper",
         options: AuthenticationOptions(
-          biometricOnly: false, // 失败时显示系统密码
+          biometricOnly: false,
           useErrorDialogs: true,
           stickyAuth: true,
         ),
@@ -93,20 +94,16 @@ class _UnlockPageState extends State<UnlockPage> {
     } catch (e) {
       debugPrint("验证失败：$e");
     } finally {
-      _authInProgress = false;
+      if (mounted) setState(() => _authInProgress = false);
     }
 
     if (!mounted) return;
     if (authenticated) {
       _finishUnlock();
     } else {
-      if (_isMasterPasswordSet && mounted) {
-        setState(() => _preferMasterPasswordEntry = true);
-      }
+      setState(() => _biometricAuthFailed = true);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_isMasterPasswordSet ? "验证失败，可改用主密码解锁" : "验证失败，请重试"),
-        ),
+        const SnackBar(content: Text("验证失败，请重试")),
       );
     }
   }
@@ -221,120 +218,191 @@ class _UnlockPageState extends State<UnlockPage> {
       _unlockMethod == AppConstants.unlockMethodBiometric &&
       !_isDeviceAuthAvailable;
 
+  /// 当前中心区域是否应展示主密码输入。
   bool get _showMasterPasswordFields =>
       _unlockMethod == AppConstants.unlockMethodMasterPassword ||
       _useMasterPasswordFallback ||
-      (_unlockMethod == AppConstants.unlockMethodBiometric &&
-          _isMasterPasswordSet &&
-          _preferMasterPasswordEntry);
+      _preferMasterPasswordEntry;
+
+  /// 是否处于「系统解锁模式」（非主密码输入态）。
+  bool get _inBiometricMode =>
+      _unlockMethod == AppConstants.unlockMethodBiometric &&
+      _isDeviceAuthAvailable &&
+      !_preferMasterPasswordEntry;
 
   @override
   Widget build(BuildContext context) {
+    final bottomTextStyle = TextButton.styleFrom(
+      foregroundColor: Theme.of(context).colorScheme.primary,
+      textStyle: const TextStyle(fontSize: 13),
+      minimumSize: Size.zero,
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+    );
+
     return PopScope(
-      // 叠加在编辑页之上时禁止手势/系统返回绕过验证回到未锁屏状态。
       canPop: !widget.fromResumeLock,
       child: Scaffold(
-        body: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 88,
-                  height: 88,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  child: Icon(
-                    Icons.lock,
-                    size: 52,
-                    color: Theme.of(context).colorScheme.onPrimaryContainer,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                const Text(
-                  "KeyKeeper",
-                  style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 40),
-                Text(
-                  _unlockMethod == AppConstants.unlockMethodBiometric
-                      ? (_isDeviceAuthAvailable
-                            ? _biometricMethodLine()
-                            : "已选择生物识别，但本机不支持，请使用下方主密码解锁")
-                      : "当前解锁方式：主密码",
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 30),
-                if (_unlockMethod == AppConstants.unlockMethodBiometric &&
-                    _isDeviceAuthAvailable)
-                  ElevatedButton(
-                    onPressed: _authInProgress ? null : _authenticate,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 40,
-                        vertical: 15,
-                      ),
-                      textStyle: const TextStyle(fontSize: 18),
-                    ),
-                    child: Text(_authInProgress ? "验证中..." : "解锁"),
-                  ),
-                if (_unlockMethod == AppConstants.unlockMethodBiometric &&
-                    _isDeviceAuthAvailable &&
-                    _isMasterPasswordSet &&
-                    !_showMasterPasswordFields)
-                  TextButton(
-                    onPressed: () =>
-                        setState(() => _preferMasterPasswordEntry = true),
-                    child: const Text('改用主密码解锁'),
-                  ),
-                if (_showMasterPasswordFields) ...[
-                  SizedBox(
-                    width: 320,
-                    child: TextField(
-                      controller: _passwordController,
-                      obscureText: _obscureMaster,
-                      decoration: InputDecoration(
-                        labelText: _isMasterPasswordSet ? '输入主密码' : '设置主密码',
-                        suffixIcon: IconButton(
-                          onPressed: () =>
-                              setState(() => _obscureMaster = !_obscureMaster),
-                          icon: Icon(
-                            _obscureMaster
-                                ? Icons.visibility_off
-                                : Icons.visibility,
+        body: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: Center(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 88,
+                          height: 88,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .primaryContainer,
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                          child: Icon(
+                            Icons.lock,
+                            size: 52,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onPrimaryContainer,
                           ),
                         ),
-                      ),
+                        const SizedBox(height: 24),
+                        const Text(
+                          "KeyKeeper",
+                          style: TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 40),
+
+                        // ── 系统解锁模式 ──
+                        if (_inBiometricMode) ...[
+                          Text(
+                            _biometricMethodLine(),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 30),
+                          ElevatedButton(
+                            onPressed:
+                                _authInProgress ? null : _authenticate,
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 40,
+                                vertical: 15,
+                              ),
+                              textStyle: const TextStyle(fontSize: 18),
+                            ),
+                            child: Text(
+                              _authInProgress ? "验证中..." : "解锁",
+                            ),
+                          ),
+                        ],
+
+                        // ── 主密码模式 ──
+                        if (_showMasterPasswordFields) ...[
+                          Text(
+                            _useMasterPasswordFallback
+                                ? "已选择生物识别，但本机不支持，请使用主密码解锁"
+                                : "当前解锁方式：主密码",
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 30),
+                          SizedBox(
+                            width: 320,
+                            child: TextField(
+                              controller: _passwordController,
+                              obscureText: _obscureMaster,
+                              decoration: InputDecoration(
+                                labelText: _isMasterPasswordSet
+                                    ? '输入主密码'
+                                    : '设置主密码',
+                                suffixIcon: IconButton(
+                                  onPressed: () => setState(
+                                    () => _obscureMaster = !_obscureMaster,
+                                  ),
+                                  icon: Icon(
+                                    _obscureMaster
+                                        ? Icons.visibility_off
+                                        : Icons.visibility,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          if (!_isMasterPasswordSet)
+                            SizedBox(
+                              width: 320,
+                              child: TextField(
+                                controller: _confirmController,
+                                obscureText: _obscureMaster,
+                                decoration: const InputDecoration(
+                                  labelText: '确认主密码',
+                                ),
+                              ),
+                            ),
+                          const SizedBox(height: 16),
+                          ElevatedButton(
+                            onPressed: _unlockWithMasterPassword,
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 40,
+                                vertical: 15,
+                              ),
+                              textStyle: const TextStyle(fontSize: 18),
+                            ),
+                            child: Text(
+                              _isMasterPasswordSet ? '使用主密码解锁' : '设置并解锁',
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  if (!_isMasterPasswordSet)
-                    SizedBox(
-                      width: 320,
-                      child: TextField(
-                        controller: _confirmController,
-                        obscureText: _obscureMaster,
-                        decoration: const InputDecoration(labelText: '确认主密码'),
-                      ),
+                ),
+              ),
+
+              // ── 底部蓝色小字：模式切换 ──
+              // 系统解锁失败后 → 显示"改用主密码解锁"
+              if (_inBiometricMode &&
+                  _biometricAuthFailed &&
+                  _isMasterPasswordSet)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Center(
+                    child: TextButton(
+                      onPressed: () {
+                        _passwordController.clear();
+                        setState(() => _preferMasterPasswordEntry = true);
+                      },
+                      style: bottomTextStyle,
+                      child: const Text('改用主密码解锁'),
                     ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: _unlockWithMasterPassword,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 40,
-                        vertical: 15,
-                      ),
-                      textStyle: const TextStyle(fontSize: 18),
-                    ),
-                    child: Text(_isMasterPasswordSet ? '使用主密码解锁' : '设置并解锁'),
                   ),
-                ],
-              ],
-            ),
+                ),
+
+              // 主密码模式 + 系统解锁可用 → 显示"返回系统解锁"
+              if (_preferMasterPasswordEntry && _isDeviceAuthAvailable)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Center(
+                    child: TextButton(
+                      onPressed: () {
+                        _passwordController.clear();
+                        setState(() => _preferMasterPasswordEntry = false);
+                      },
+                      style: bottomTextStyle,
+                      child: const Text('返回系统解锁'),
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
       ),

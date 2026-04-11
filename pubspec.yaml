@@ -50,6 +50,8 @@ dependencies:
   # 基础 UI/工具
   cupertino_icons: ^1.0.8
   fluttertoast: ^8.2.2            # 提示框
+  flutter_slidable: ^4.0.3
+  share_plus: ^12.0.2
 
 dev_dependencies:
   flutter_test:

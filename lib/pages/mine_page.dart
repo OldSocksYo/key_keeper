@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:key_keeper/common/constants.dart';
 import 'package:key_keeper/services/account_service.dart';
 import 'package:key_keeper/services/csv_service.dart';
@@ -72,6 +73,66 @@ class _MinePageState extends State<MinePage> {
     setState(() => _unlockMethod = selected);
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('解锁方式已更新，下次解锁生效')),
+    );
+  }
+
+  /// 导出前选择：系统分享（云盘等）或本地保存。
+  Future<CsvExportDestination?> _pickExportDestination() {
+    return showModalBottomSheet<CsvExportDestination>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '选择导出方式',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.share),
+              title: const Text('分享到其他应用'),
+              subtitle: const Text('云盘、即时通讯、邮件等'),
+              onTap: () => Navigator.pop(context, CsvExportDestination.systemShare),
+            ),
+            ListTile(
+              leading: const Icon(Icons.save_alt),
+              title: const Text('保存到本地'),
+              subtitle: const Text('通过系统文件管理器选择位置'),
+              onTap: () => Navigator.pop(context, CsvExportDestination.saveToFile),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 执行导出；若 share_plus 原生未注册（常见于热重载后），给出明确提示。
+  Future<void> _runCsvExport(Future<void> Function() export) async {
+    try {
+      await export();
+    } on MissingPluginException catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            '分享功能未接入：添加 share_plus 后须完全停止应用并重新编译安装，'
+            '不能仅靠热重载。可在项目根目录执行 flutter clean 后再 flutter run。',
+          ),
+          duration: Duration(seconds: 8),
+        ),
+      );
+      return;
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('导出完成')),
     );
   }
 
@@ -401,9 +462,10 @@ class _MinePageState extends State<MinePage> {
           trailing: const Icon(Icons.chevron_right),
           onTap: () async {
             if (!await _ensureKey(context)) return;
-            await widget.csvService.exportEncrypted();
-            if (!context.mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('导出完成')));
+            if (!mounted) return;
+            final dest = await _pickExportDestination();
+            if (dest == null) return;
+            await _runCsvExport(() => widget.csvService.exportEncrypted(dest));
           },
         ),
         ListTile(
@@ -424,9 +486,10 @@ class _MinePageState extends State<MinePage> {
           trailing: const Icon(Icons.chevron_right),
           onTap: () async {
             if (!await _ensureKey(context)) return;
-            await widget.csvService.exportPlain();
-            if (!context.mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('导出完成')));
+            if (!mounted) return;
+            final dest = await _pickExportDestination();
+            if (dest == null) return;
+            await _runCsvExport(() => widget.csvService.exportPlain(dest));
           },
         ),
         ListTile(
