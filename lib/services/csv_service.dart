@@ -60,7 +60,7 @@ class CsvService {
     await _dispatchExport(
       destination: destination,
       bytes: bytes,
-      fileName: 'account_${_exportTimeStamp()}.csv',
+      fileName: '${_exportTimeStamp()}_account.csv',
       saveDialogTitle: '导出明文 CSV',
       shareMimeType: 'text/csv',
     );
@@ -78,7 +78,7 @@ class CsvService {
     await _dispatchExport(
       destination: destination,
       bytes: encrypted,
-      fileName: 'encryptedAccount_${_exportTimeStamp()}.csv',
+      fileName: '${_exportTimeStamp()}_encryptedAccount.csv',
       saveDialogTitle: '导出加密 CSV',
       shareMimeType: 'application/octet-stream',
     );

@@ -138,6 +138,32 @@ class _AccountDetailPageState extends State<AccountDetailPage> {
     });
   }
 
+  Future<void> _onLongPressRemoveType(String type) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('移除类型'),
+        content: Text('确定从快速选择中移除「$type」？\n（不影响已有账户数据）'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('移除'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await _removeTypeOption(type);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('已从快速选择移除「$type」')),
+    );
+  }
+
   Future<void> _save() async {
     final typeText = _typeCtrl.text.trim();
     final username = _userCtrl.text.trim();
@@ -337,6 +363,14 @@ class _AccountDetailPageState extends State<AccountDetailPage> {
           if (_isInsert || _editing) ...[
             const SizedBox(height: 16),
             const Text('快速选择类型'),
+            const SizedBox(height: 4),
+            Text(
+              '长按标签可移除',
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
             const SizedBox(height: 8),
             Align(
               alignment: Alignment.centerLeft,
@@ -352,11 +386,13 @@ class _AccountDetailPageState extends State<AccountDetailPage> {
               runSpacing: 8,
               children: _typeOptions
                   .map(
-                    (e) => InputChip(
-                      label: Text(e),
-                      selected: _typeCtrl.text == e,
-                      onSelected: (_) => setState(() => _typeCtrl.text = e),
-                      onDeleted: () => _removeTypeOption(e),
+                    (e) => GestureDetector(
+                      onLongPress: () => _onLongPressRemoveType(e),
+                      child: ChoiceChip(
+                        label: Text(e),
+                        selected: _typeCtrl.text == e,
+                        onSelected: (_) => setState(() => _typeCtrl.text = e),
+                      ),
                     ),
                   )
                   .toList(),
