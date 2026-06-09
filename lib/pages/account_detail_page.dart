@@ -6,15 +6,18 @@ import 'package:key_keeper/services/account_service.dart';
 import 'package:key_keeper/widgets/account_icon.dart';
 import 'package:key_keeper/widgets/totp_display.dart';
 
+/// 详情页路由参数。
 class AccountDetailArgs {
   AccountDetailArgs({required this.mode, this.key});
 
   final AccountDetailMode mode;
+  /// Hive 中的记录 key；[AccountDetailMode.insert] 时为 null。
   final int? key;
 }
 
 enum AccountDetailMode { view, insert }
 
+/// 账号详情 / 新增 / 编辑页；保存时调用 [AccountService] 写入 Hive。
 class AccountDetailPage extends StatefulWidget {
   const AccountDetailPage({super.key, required this.args, required this.accountService});
 

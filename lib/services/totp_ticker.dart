@@ -2,7 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
-/// 全局 TOTP 倒计时广播，避免列表中每行各自创建 Timer。
+/// 全局 TOTP 倒计时广播（单例）。
+///
+/// 列表中每个含 TOTP 的条目只需监听此对象，而非各自 [Timer.periodic]，
+/// 避免 N 个账号产生 N 个定时器。
 class TotpTicker extends ChangeNotifier {
   TotpTicker._();
 

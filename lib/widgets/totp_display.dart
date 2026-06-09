@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:key_keeper/services/totp_service.dart';
 import 'package:key_keeper/services/totp_ticker.dart';
 
-/// 列表项右侧 TOTP 展示（共享全局倒计时）。
+/// 列表项右侧 TOTP 展示（共享 [TotpTicker] 全局倒计时）。
+///
+/// 默认显示 `••••••`，点击眼睛图标或验证码区域可切换显示/隐藏。
 class TotpListTrailing extends StatefulWidget {
   const TotpListTrailing({
     super.key,

@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
 
+/// 全局常量：Secure Storage 键名、Hive Box 名、UI 预设等。
 class AppConstants {
+  // --- Secure Storage / Hive 键名 ---
   static const String accountBoxName = 'account_entry_box';
+  /// Hive 整库 AES 加密密钥（32 字节 base64）。
   static const String hiveEncryptionKeyName = 'hive_encryption_key';
+  /// 加密「个人密钥」用的随机种子。
   static const String initSecretName = 'init_secret';
+  /// 经 initSecret 加密后的个人密钥。
   static const String userKeyEncryptedName = 'user_key_encrypted';
   static const String userKeySetName = 'user_key_set';
+  /// 主密码 PBKDF2 哈希（或旧版 SHA256 十六进制）。
   static const String appMasterPasswordHashName = 'app_master_password_hash';
   static const String unlockMethodName = 'unlock_method';
   static const String unlockMethodBiometric = 'biometric';

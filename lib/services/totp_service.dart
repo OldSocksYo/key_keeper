@@ -1,6 +1,8 @@
 import 'package:otp/otp.dart';
 
+/// TOTP 动态验证码生成（Google Authenticator 兼容：30 秒窗口、SHA1、6 位）。
 class TotpService {
+  /// 根据 Base32 密钥生成当前 6 位验证码。
   String generateCode(String base32Secret) {
     return OTP.generateTOTPCodeString(
       base32Secret,

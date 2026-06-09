@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:key_keeper/services/key_service.dart';
 
+/// 个人密钥设置/查看弹窗。
+///
+/// 首次使用可在此设置个人密钥；已设置后为只读展示（调用方应已通过二次验证）。
+/// 个人密钥用于加密账号字段，与「主密码」（仅解锁 App）不同。
 class PrivateKeyDialog extends StatefulWidget {
   const PrivateKeyDialog({super.key, required this.keyService});
 

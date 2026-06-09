@@ -8,6 +8,10 @@ import 'package:key_keeper/services/crypto_service.dart';
 import 'package:key_keeper/utils/pbkdf2.dart';
 import 'package:key_keeper/utils/secure_compare.dart';
 
+/// 管理三类凭据，职责务必区分：
+/// - **主密码**：仅解锁 App（PBKDF2 哈希）
+/// - **Hive 密钥**：加密整个数据库文件
+/// - **个人密钥**：加密每条账号的 password / totp 字段
 class KeyService {
   KeyService(this._secureStorage, this._cryptoService);
 
@@ -15,11 +19,13 @@ class KeyService {
   final CryptoService _cryptoService;
   final Random _random = Random.secure();
 
+  /// 解锁会话内缓存个人密钥，减少 Secure Storage 读取；进入后台时由 main 清除。
   String? _cachedUserKey;
 
   static const int _pbkdf2Iterations = 600000;
   static const String _pbkdf2Prefix = 'pbkdf2:';
 
+  /// 首次启动生成 32 字节 Hive AES 密钥，之后从 Secure Storage 读取。
   Future<String> ensureHiveKey() async {
     final value = await _secureStorage.read(key: AppConstants.hiveEncryptionKeyName);
     if (value != null && value.isNotEmpty) return value;
@@ -28,6 +34,7 @@ class KeyService {
     return generated;
   }
 
+  /// 用于加密「个人密钥」本身的随机种子，与个人密钥分存但同层 Secure Storage。
   Future<void> _ensureInitSecret() async {
     final value = await _secureStorage.read(key: AppConstants.initSecretName);
     if (value != null && value.isNotEmpty) return;
@@ -61,6 +68,7 @@ class KeyService {
       throw StateError('User key is not configured.');
     }
     final plain = _cryptoService.decrypt(initSecret, encrypted);
+    // 懒迁移：读取个人密钥时若仍是旧 CBC 格式，自动升级为 GCM。
     if (!_cryptoService.isNewFormat(encrypted)) {
       final upgraded = _cryptoService.encrypt(initSecret, plain);
       await _secureStorage.write(key: AppConstants.userKeyEncryptedName, value: upgraded);
@@ -108,6 +116,7 @@ class KeyService {
     if (_isPbkdf2Hash(stored)) {
       return _verifyPbkdf2Hash(normalized, stored);
     }
+    // 兼容旧版纯 SHA256 哈希；验证成功后自动升级为 PBKDF2。
     final legacyOk = secureCompareStrings(_sha256Hex(normalized), stored);
     if (legacyOk) {
       await setAppMasterPassword(normalized);

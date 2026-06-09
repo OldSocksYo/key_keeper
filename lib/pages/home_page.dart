@@ -4,6 +4,7 @@ import 'package:key_keeper/pages/account_detail_page.dart';
 import 'package:key_keeper/pages/account_list_page.dart';
 import 'package:key_keeper/pages/mine_page.dart';
 
+/// 解锁后的主页：底部双 Tab（账号列表 / 我的），通过 [IndexedStack] 保持 Tab 状态。
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -15,8 +16,9 @@ class _HomePageState extends State<HomePage> {
   int _index = 0;
   bool _searching = false;
   final _searchCtrl = TextEditingController();
+  /// 搜索关键词，传给 [AccountListPage] 做筛选（带 300ms 防抖）。
   final _accountSearchNotifier = ValueNotifier<String>('');
-  /// 从新增/编辑返回时递增，驱动账号列表刷新。
+  /// 手动刷新信号：新增/编辑/导入完成后递增，驱动列表重拉。
   final _accountListBump = ValueNotifier<int>(0);
 
   @override
@@ -54,6 +56,7 @@ class _HomePageState extends State<HomePage> {
         return;
       }
       if (!mounted) return;
+      // 详情/编辑页用 Navigator.push 而非 go_router，以便后台恢复时保留未保存的编辑状态。
       final saved = await Navigator.push<bool>(
         context,
         MaterialPageRoute(
@@ -108,6 +111,7 @@ class _HomePageState extends State<HomePage> {
             ),
         ],
       ),
+      // IndexedStack 同时保留两个 Tab 的子树，切换 Tab 不销毁列表状态。
       body: IndexedStack(
         index: _index,
         children: [

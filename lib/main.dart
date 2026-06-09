@@ -16,6 +16,12 @@ import 'package:key_keeper/services/key_service.dart';
 import 'package:key_keeper/services/totp_service.dart';
 import 'package:local_auth/local_auth.dart';
 
+// ---------------------------------------------------------------------------
+// 全局单例：在 main() 中初始化，各页面通过 import 使用。
+// 小型项目够用；规模变大后可迁到 Riverpod 等 DI 方案。
+// ---------------------------------------------------------------------------
+
+/// 系统级安全存储，用于存放 Hive 密钥、主密码哈希、个人密钥等。
 const FlutterSecureStorage secureStorage = FlutterSecureStorage(
   aOptions: AndroidOptions(encryptedSharedPreferences: true),
 );
@@ -39,13 +45,16 @@ final GoRouter appRouter = GoRouter(
   ],
 );
 
+/// 应用入口：先完成数据库与 Service 初始化，再启动 UI。
 void main() async {
+  // runApp 之前若有 async 操作，必须先调用此方法。
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
   Hive.registerAdapter(AccountEntryAdapter());
 
   appCryptoService = CryptoService();
   appKeyService = KeyService(secureStorage, appCryptoService);
+  // 第二层加密：Hive 整库 AES，密钥存 Secure Storage（与个人密钥无关）。
   final hiveKey = await appKeyService.ensureHiveKey();
   final keyBytes = base64Decode(hiveKey);
   final box = await Hive.openBox<AccountEntry>(
@@ -71,7 +80,9 @@ class MyApp extends StatefulWidget {
   State<MyApp> createState() => _MyAppState();
 }
 
+/// 根组件：负责主题、路由，以及应用生命周期相关的安全行为（模糊遮罩、后台锁屏）。
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  /// 是否曾真正进入过后台（paused），用于区分「生物识别弹窗触发的 inactive」。
   bool _wentBackground = false;
 
   /// 避免在解锁页未关闭时重复 [Navigator.push] 叠加多个解锁页。

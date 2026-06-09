@@ -5,6 +5,7 @@ import 'package:key_keeper/common/constants.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:key_keeper/main.dart';
 
+/// 应用解锁页：支持生物识别与主密码两种方式，冷启动与后台恢复复用此页。
 class UnlockPage extends StatefulWidget {
   const UnlockPage({super.key, this.fromResumeLock = false});
 
@@ -82,7 +83,7 @@ class _UnlockPageState extends State<UnlockPage> {
       authenticated = await localAuth.authenticate(
         localizedReason: "验证身份以解锁 KeyKeeper",
         options: AuthenticationOptions(
-          biometricOnly: false,
+          biometricOnly: false, // 允许回退到系统 PIN/图案，提升可用性。
           useErrorDialogs: true,
           stickyAuth: true,
         ),
@@ -158,9 +159,11 @@ class _UnlockPageState extends State<UnlockPage> {
 
   /// 从后台恢复时解锁页在栈顶，应 pop；冷启动仅 go_router 的 `/unlock` 时无上一页，需进入首页。
   Future<void> _finishUnlock() async {
+    // 预热个人密钥缓存，并懒迁移旧版 CBC 密文 → GCM。
     await appKeyService.warmUserKeyCache();
     await appAccountService.migrateLegacyEncryptionIfNeeded();
     if (!mounted) return;
+    // 后台恢复叠加的解锁页：pop 回原页面；冷启动：go 到首页。
     if (context.canPop()) {
       context.pop();
     } else {

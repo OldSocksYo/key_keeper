@@ -11,11 +11,15 @@ import 'package:key_keeper/services/account_service.dart';
 import 'package:key_keeper/services/crypto_service.dart';
 import 'package:key_keeper/services/key_service.dart';
 
+/// CSV 导出目的地。
 enum CsvExportDestination {
+  /// 系统分享面板（云盘、邮件等）。
   systemShare,
+  /// 系统文件保存对话框。
   saveToFile,
 }
 
+/// 账号 CSV 导入导出；加密导出时用 [CryptoService.encryptBytes] 保护整文件。
 class CsvService {
   CsvService(this._accountService, this._keyService, this._cryptoService);
 
@@ -132,6 +136,7 @@ class CsvService {
     return picked?.files.single.bytes;
   }
 
+  /// 批量导入 CSV 行：预建去重集合 + 一次性 batch 写入，避免逐条全表扫描。
   Future<void> _importRows(
     List<List<dynamic>> rows, {
     required bool skipHeader,
@@ -143,6 +148,7 @@ class CsvService {
             : 0;
 
     final existingAccounts = await _accountService.getAccountList(scope: DecryptScope.list);
+    // 用 typeText + username 小写组合去重，\x00 分隔避免碰撞。
     final existingSet = <String>{
       for (final e in existingAccounts)
         '${e.value.typeText.trim().toLowerCase()}\x00${e.value.username.trim().toLowerCase()}',

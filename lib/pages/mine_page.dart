@@ -7,6 +7,7 @@ import 'package:key_keeper/services/key_service.dart';
 import 'package:key_keeper/widgets/private_key_dialog.dart';
 import 'package:key_keeper/widgets/sensitive_action_gate.dart';
 
+/// 「我的」页：解锁方式、个人密钥、主密码、CSV 导入导出等设置入口。
 class MinePage extends StatefulWidget {
   const MinePage({
     super.key,
@@ -19,6 +20,7 @@ class MinePage extends StatefulWidget {
   final KeyService keyService;
   final CsvService csvService;
   final AccountService accountService;
+  /// 导入完成后递增，通知账号列表刷新。
   final ValueNotifier<int>? listBump;
 
   @override

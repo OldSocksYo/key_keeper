@@ -14,6 +14,7 @@ enum DecryptScope {
   full,
 }
 
+/// 账号 CRUD 与 Hive 交互的唯一入口；负责调用 [CryptoService] 加解密敏感字段。
 class AccountService {
   AccountService(this._box, this._cryptoService, this._keyService);
 
@@ -21,6 +22,7 @@ class AccountService {
   final CryptoService _cryptoService;
   final KeyService _keyService;
 
+  /// 数据变更计数器，列表页监听此值以自动刷新（导入、删除、编辑后递增）。
   final ValueNotifier<int> dataRevision = ValueNotifier<int>(0);
 
   void _notifyChanged() {
@@ -42,6 +44,7 @@ class AccountService {
     _notifyChanged();
   }
 
+  /// 按「类型 + 用户名」去重：已存在则合并更新，空字段保留原值。
   Future<void> _addAccountWithKey(String userKey, AccountEntry account) async {
     final existingKey = _findKey(account.typeText, account.username);
     AccountEntry? existing;
@@ -112,6 +115,7 @@ class AccountService {
     return _decryptEntryWith(userKey, raw, scope: DecryptScope.full);
   }
 
+  /// 默认 [DecryptScope.list] 只解密 TOTP，列表页不触碰密码明文以提升性能。
   Future<List<MapEntry<int, AccountEntry>>> getAccountList({
     String? keyword,
     DecryptScope scope = DecryptScope.list,
@@ -244,6 +248,7 @@ class AccountService {
     try {
       await persistNewKey();
     } catch (_) {
+      // 新密钥持久化失败时回滚账户数据，避免「库已换钥但密钥未保存」的不一致状态。
       await _box.putAll(original);
       rethrow;
     }
@@ -314,6 +319,7 @@ class AccountService {
     );
   }
 
+  /// 单条解密失败返回 null，避免一条损坏记录导致整表加载崩溃。
   String? _safeDecrypt(String userKey, String cipher) {
     try {
       return _cryptoService.decrypt(userKey, cipher);

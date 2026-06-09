@@ -10,6 +10,7 @@ import 'package:key_keeper/widgets/account_icon.dart';
 import 'package:key_keeper/widgets/confirm_delete_dialog.dart';
 import 'package:key_keeper/widgets/totp_display.dart';
 
+/// 账号列表页：支持下拉刷新、搜索防抖、左滑删除、TOTP 行内展示。
 class AccountListPage extends StatefulWidget {
   const AccountListPage({
     super.key,
@@ -20,6 +21,7 @@ class AccountListPage extends StatefulWidget {
 
   final AccountService accountService;
   final ValueNotifier<String> searchNotifier;
+  /// 父组件递增时触发刷新；与 [AccountService.dataRevision] 双通道通知。
   final ValueNotifier<int> listBump;
 
   @override
@@ -53,6 +55,7 @@ class AccountListPageState extends State<AccountListPage> {
     super.dispose();
   }
 
+  /// 搜索输入防抖：避免每次按键都触发全表解密。
   void _onSearchChanged() {
     _pendingKeyword = widget.searchNotifier.value;
     _searchDebounce?.cancel();

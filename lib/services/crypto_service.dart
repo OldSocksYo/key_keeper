@@ -7,8 +7,10 @@ import 'package:encrypt/encrypt.dart' as enc;
 
 /// 字段级加密：新数据使用 AES-256-GCM（随机 IV），兼容旧版 AES-192-CBC 固定 IV。
 class CryptoService {
+  /// 新格式密文前缀；带此前缀表示 AES-256-GCM + 随机 IV。
   static const String _gcmPrefix = 'g1:';
 
+  /// 旧版固定 IV，仅用于解密历史数据，新写入不再使用。
   static const List<int> _legacyIvBytes = <int>[
     0x12,
     0x34,
@@ -30,8 +32,10 @@ class CryptoService {
 
   final Random _random = Random.secure();
 
+  /// 判断密文是否已是 GCM 新格式（用于迁移时跳过已升级记录）。
   bool isNewFormat(String cipherText) => cipherText.startsWith(_gcmPrefix);
 
+  /// 个人密钥 → 32 字节 AES-256 密钥（SHA256 全量截取）。
   enc.Key _buildAes256Key(String userKey) {
     final digest = sha256.convert(utf8.encode(userKey)).bytes;
     return enc.Key(Uint8List.fromList(digest));
@@ -46,6 +50,7 @@ class CryptoService {
     return Uint8List.fromList(List<int>.generate(length, (_) => _random.nextInt(256)));
   }
 
+  /// 加密明文；存储格式：g1: + base64(12字节IV + 密文含认证标签)。
   String encrypt(String userKey, String plainText) {
     final key = _buildAes256Key(userKey);
     final iv = enc.IV(_randomNonce(12));
@@ -55,6 +60,7 @@ class CryptoService {
     return '$_gcmPrefix${base64Encode(payload)}';
   }
 
+  /// 自动识别 GCM 新格式或旧版 CBC 密文并解密。
   String decrypt(String userKey, String cipherText) {
     if (isNewFormat(cipherText)) {
       return _decryptGcm(userKey, cipherText.substring(_gcmPrefix.length));
