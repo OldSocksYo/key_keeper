@@ -16,7 +16,9 @@ import 'package:key_keeper/services/key_service.dart';
 import 'package:key_keeper/services/totp_service.dart';
 import 'package:local_auth/local_auth.dart';
 
-final FlutterSecureStorage secureStorage = FlutterSecureStorage();
+const FlutterSecureStorage secureStorage = FlutterSecureStorage(
+  aOptions: AndroidOptions(encryptedSharedPreferences: true),
+);
 final LocalAuthentication localAuth = LocalAuthentication();
 
 late final CryptoService appCryptoService;
@@ -102,6 +104,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     // 仅在真正进入后台（paused）时标记上锁，避免生物识别弹窗触发 inactive 导致误锁循环。
     if (state == AppLifecycleState.paused) {
       _wentBackground = true;
+      appKeyService.clearSessionCache();
     }
     if (state == AppLifecycleState.resumed && _wentBackground) {
       _wentBackground = false;

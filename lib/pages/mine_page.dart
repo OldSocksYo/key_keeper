@@ -5,6 +5,7 @@ import 'package:key_keeper/services/account_service.dart';
 import 'package:key_keeper/services/csv_service.dart';
 import 'package:key_keeper/services/key_service.dart';
 import 'package:key_keeper/widgets/private_key_dialog.dart';
+import 'package:key_keeper/widgets/sensitive_action_gate.dart';
 
 class MinePage extends StatefulWidget {
   const MinePage({
@@ -12,11 +13,13 @@ class MinePage extends StatefulWidget {
     required this.keyService,
     required this.csvService,
     required this.accountService,
+    this.listBump,
   });
 
   final KeyService keyService;
   final CsvService csvService;
   final AccountService accountService;
+  final ValueNotifier<int>? listBump;
 
   @override
   State<MinePage> createState() => _MinePageState();
@@ -438,10 +441,17 @@ class _MinePageState extends State<MinePage> {
           leading: const Icon(Icons.vpn_key),
           title: const Text('查看个人密钥'),
           trailing: const Icon(Icons.chevron_right),
-          onTap: () => showDialog(
-            context: context,
-            builder: (_) => PrivateKeyDialog(keyService: widget.keyService),
-          ),
+          onTap: () async {
+            final ok = await requestSensitiveActionConfirmation(
+              context,
+              reason: '查看个人密钥前请验证身份',
+            );
+            if (!ok || !context.mounted) return;
+            await showDialog(
+              context: context,
+              builder: (_) => PrivateKeyDialog(keyService: widget.keyService),
+            );
+          },
         ),
         ListTile(
           leading: const Icon(Icons.key),
@@ -476,6 +486,7 @@ class _MinePageState extends State<MinePage> {
             if (!await _ensureKey(context)) return;
             await widget.csvService.importEncrypted();
             if (!context.mounted) return;
+            widget.listBump?.value++;
             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('导入完成')));
           },
         ),
@@ -486,7 +497,9 @@ class _MinePageState extends State<MinePage> {
           trailing: const Icon(Icons.chevron_right),
           onTap: () async {
             if (!await _ensureKey(context)) return;
-            if (!mounted) return;
+            if (!context.mounted) return;
+            final ok = await confirmRiskyExport(context);
+            if (!context.mounted || !ok) return;
             final dest = await _pickExportDestination();
             if (dest == null) return;
             await _runCsvExport(() => widget.csvService.exportPlain(dest));
@@ -500,6 +513,7 @@ class _MinePageState extends State<MinePage> {
             if (!await _ensureKey(context)) return;
             await widget.csvService.importPlain();
             if (!context.mounted) return;
+            widget.listBump?.value++;
             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('导入完成')));
           },
         ),

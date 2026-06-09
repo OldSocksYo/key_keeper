@@ -120,6 +120,7 @@ class _HomePageState extends State<HomePage> {
             keyService: appKeyService,
             csvService: appCsvService,
             accountService: appAccountService,
+            listBump: _accountListBump,
           ),
         ],
       ),
@@ -130,6 +131,7 @@ class _HomePageState extends State<HomePage> {
             _index = value;
             _searching = false;
             _searchCtrl.clear();
+            _accountSearchNotifier.value = '';
           });
         },
         destinations: const [

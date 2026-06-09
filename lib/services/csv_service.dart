@@ -11,12 +11,8 @@ import 'package:key_keeper/services/account_service.dart';
 import 'package:key_keeper/services/crypto_service.dart';
 import 'package:key_keeper/services/key_service.dart';
 
-/// 导出目的地：系统分享面板或本地保存对话框。
 enum CsvExportDestination {
-  /// 打开系统分享，可选云盘、即时通讯、邮件等目标应用。
   systemShare,
-
-  /// 通过系统文件选择器保存到本地存储。
   saveToFile,
 }
 
@@ -47,10 +43,8 @@ class CsvService {
         e.totpSecret ?? '',
       ];
 
-  // ── 导出 ──
-
   Future<void> exportPlain(CsvExportDestination destination) async {
-    final list = await _accountService.getAccountList();
+    final list = await _accountService.getAccountList(scope: DecryptScope.full);
     final rows = <List<dynamic>>[
       _csvHeader,
       ...list.map((e) => _entryToRow(e.value)),
@@ -67,7 +61,7 @@ class CsvService {
   }
 
   Future<void> exportEncrypted(CsvExportDestination destination) async {
-    final list = await _accountService.getAccountList();
+    final list = await _accountService.getAccountList(scope: DecryptScope.full);
     final rows = list.map((e) => _entryToRow(e.value)).toList();
     final csv = const ListToCsvConverter().convert(rows);
     final userKey = await _keyService.getUserKey();
@@ -104,7 +98,9 @@ class CsvService {
             ),
           );
         } finally {
-          try { await file.delete(); } catch (_) {}
+          try {
+            await file.delete();
+          } catch (_) {}
         }
       case CsvExportDestination.saveToFile:
         await FilePicker.platform.saveFile(
@@ -114,8 +110,6 @@ class CsvService {
         );
     }
   }
-
-  // ── 导入 ──
 
   Future<void> importPlain() async {
     final bytes = await _pickFileBytes();
@@ -138,7 +132,6 @@ class CsvService {
     return picked?.files.single.bytes;
   }
 
-  /// 将 CSV 行批量导入，预先构建去重集合避免逐行全表扫描。
   Future<void> _importRows(
     List<List<dynamic>> rows, {
     required bool skipHeader,
@@ -149,13 +142,14 @@ class CsvService {
             ? 1
             : 0;
 
-    final existingAccounts = await _accountService.getAccountList();
+    final existingAccounts = await _accountService.getAccountList(scope: DecryptScope.list);
     final existingSet = <String>{
       for (final e in existingAccounts)
         '${e.value.typeText.trim().toLowerCase()}\x00${e.value.username.trim().toLowerCase()}',
     };
 
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final batch = <AccountEntry>[];
     for (var i = start; i < rows.length; i++) {
       final row = rows[i];
       if (row.length < 4) continue;
@@ -167,7 +161,7 @@ class CsvService {
       existingSet.add(dedupKey);
       final password = row[2].toString();
       final totpSecret = row[3].toString();
-      await _accountService.addAccount(AccountEntry(
+      batch.add(AccountEntry(
         typeText: typeText,
         username: username,
         passwordSecret: password.isEmpty ? null : password,
@@ -175,5 +169,6 @@ class CsvService {
         updateTime: now,
       ));
     }
+    await _accountService.addAccountsBatch(batch);
   }
 }

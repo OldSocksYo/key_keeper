@@ -1,8 +1,18 @@
+import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:key_keeper/common/constants.dart';
 import 'package:key_keeper/models/account_entry.dart';
 import 'package:key_keeper/services/crypto_service.dart';
 import 'package:key_keeper/services/key_service.dart';
+
+/// 控制列表加载时解密哪些敏感字段。
+enum DecryptScope {
+  /// 列表模式：仅解密 TOTP，不解密密码。
+  list,
+
+  /// 完整解密：密码与 TOTP 均解密。
+  full,
+}
 
 class AccountService {
   AccountService(this._box, this._cryptoService, this._keyService);
@@ -11,13 +21,39 @@ class AccountService {
   final CryptoService _cryptoService;
   final KeyService _keyService;
 
+  final ValueNotifier<int> dataRevision = ValueNotifier<int>(0);
+
+  void _notifyChanged() {
+    dataRevision.value++;
+  }
+
   Future<void> addAccount(AccountEntry account) async {
     final userKey = await _keyService.getUserKey();
+    await _addAccountWithKey(userKey, account);
+    _notifyChanged();
+  }
+
+  Future<void> addAccountsBatch(List<AccountEntry> accounts) async {
+    if (accounts.isEmpty) return;
+    final userKey = await _keyService.getUserKey();
+    for (final account in accounts) {
+      await _addAccountWithKey(userKey, account);
+    }
+    _notifyChanged();
+  }
+
+  Future<void> _addAccountWithKey(String userKey, AccountEntry account) async {
     final existingKey = _findKey(account.typeText, account.username);
     AccountEntry? existing;
     if (existingKey != null) {
       final raw = _box.get(existingKey);
-      if (raw != null) existing = _decryptEntryWith(userKey, raw);
+      if (raw != null) {
+        existing = _decryptEntryWith(
+          userKey,
+          raw,
+          scope: DecryptScope.full,
+        );
+      }
     }
 
     final mergedPassword =
@@ -61,18 +97,25 @@ class AccountService {
       updateTime: DateTime.now().millisecondsSinceEpoch ~/ 1000,
     );
     await _box.put(key, toSave);
+    _notifyChanged();
   }
 
-  Future<void> deleteAccount(int key) => _box.delete(key);
+  Future<void> deleteAccount(int key) async {
+    await _box.delete(key);
+    _notifyChanged();
+  }
 
   Future<AccountEntry?> getAccount(int key) async {
     final raw = _box.get(key);
     if (raw == null) return null;
     final userKey = await _keyService.getUserKey();
-    return _decryptEntryWith(userKey, raw);
+    return _decryptEntryWith(userKey, raw, scope: DecryptScope.full);
   }
 
-  Future<List<MapEntry<int, AccountEntry>>> getAccountList({String? keyword}) async {
+  Future<List<MapEntry<int, AccountEntry>>> getAccountList({
+    String? keyword,
+    DecryptScope scope = DecryptScope.list,
+  }) async {
     final entries = <MapEntry<int, AccountEntry>>[
       for (final e in _box.toMap().entries) MapEntry(e.key as int, e.value),
     ];
@@ -88,12 +131,12 @@ class AccountService {
     final userKey = await _keyService.getUserKey();
     return [
       for (final entry in filtered)
-        MapEntry(entry.key, _decryptEntryWith(userKey, entry.value)),
+        MapEntry(entry.key, _decryptEntryWith(userKey, entry.value, scope: scope)),
     ];
   }
 
   Future<List<MapEntry<int, AccountEntry>>> getTotpList({String? keyword}) async {
-    final all = await getAccountList(keyword: keyword);
+    final all = await getAccountList(keyword: keyword, scope: DecryptScope.list);
     return all.where((entry) => entry.value.hasTotp).toList();
   }
 
@@ -105,8 +148,57 @@ class AccountService {
         item.username.trim().toLowerCase() == usernameLower);
   }
 
-  /// 使用新个人密钥对全部账户字段进行重加密。
-  /// 若持久化新密钥失败，会回滚到账户重加密前状态。
+  /// 将旧版 CBC 密文迁移为 GCM 格式。
+  Future<int> migrateLegacyEncryptionIfNeeded() async {
+    if (!await _keyService.isUserKeySet()) return 0;
+    final userKey = await _keyService.getUserKey();
+    var migrated = 0;
+    final updates = <int, AccountEntry>{};
+
+    for (final entry in _box.toMap().entries) {
+      final key = entry.key as int;
+      final value = entry.value;
+      var nextPassword = value.passwordSecret;
+      var nextTotp = value.totpSecret;
+      var changed = false;
+
+      final rawPassword = (value.passwordSecret ?? '').trim();
+      if (rawPassword.isNotEmpty && !_cryptoService.isNewFormat(rawPassword)) {
+        final plain = _safeDecrypt(userKey, rawPassword);
+        if (plain != null) {
+          nextPassword = _cryptoService.encrypt(userKey, plain);
+          changed = true;
+        }
+      }
+
+      final rawTotp = (value.totpSecret ?? '').trim();
+      if (rawTotp.isNotEmpty && !_cryptoService.isNewFormat(rawTotp)) {
+        final plain = _safeDecrypt(userKey, rawTotp);
+        if (plain != null) {
+          nextTotp = _cryptoService.encrypt(userKey, plain);
+          changed = true;
+        }
+      }
+
+      if (changed) {
+        updates[key] = AccountEntry(
+          typeText: value.typeText,
+          username: value.username,
+          passwordSecret: nextPassword,
+          totpSecret: nextTotp,
+          updateTime: value.updateTime,
+        );
+        migrated++;
+      }
+    }
+
+    if (updates.isNotEmpty) {
+      await _box.putAll(updates);
+      _notifyChanged();
+    }
+    return migrated;
+  }
+
   Future<void> rotateUserKey({
     required String oldUserKey,
     required String newUserKey,
@@ -129,12 +221,15 @@ class AccountService {
       final rawTotp = (value.totpSecret ?? '').trim();
 
       final decryptedPassword =
-          rawPassword.isEmpty ? null : _cryptoService.decrypt(oldNormalized, rawPassword);
-      final decryptedTotp = rawTotp.isEmpty ? null : _cryptoService.decrypt(oldNormalized, rawTotp);
+          rawPassword.isEmpty ? null : _safeDecrypt(oldNormalized, rawPassword);
+      final decryptedTotp = rawTotp.isEmpty ? null : _safeDecrypt(oldNormalized, rawTotp);
 
-      final nextPassword =
-          (decryptedPassword ?? '').isEmpty ? null : _cryptoService.encrypt(newNormalized, decryptedPassword!);
-      final nextTotp = (decryptedTotp ?? '').isEmpty ? null : _cryptoService.encrypt(newNormalized, decryptedTotp!);
+      final nextPassword = (decryptedPassword ?? '').isEmpty
+          ? null
+          : _cryptoService.encrypt(newNormalized, decryptedPassword!);
+      final nextTotp = (decryptedTotp ?? '').isEmpty
+          ? null
+          : _cryptoService.encrypt(newNormalized, decryptedTotp!);
 
       reEncrypted[entry.key] = AccountEntry(
         typeText: value.typeText,
@@ -152,9 +247,9 @@ class AccountService {
       await _box.putAll(original);
       rethrow;
     }
+    _notifyChanged();
   }
 
-  /// 返回账户类型建议：预置类型 + 已保存账户中的自定义类型（去重），并排除用户在快速选择中删除项。
   Future<List<String>> getAccountTypeSuggestions() async {
     final hidden = await _keyService.getHiddenAccountTypeSuggestions();
     final result = <String>[...AppConstants.accountTypePresets];
@@ -175,7 +270,6 @@ class AccountService {
     ];
   }
 
-  /// 从「快速选择类型」中移除该项（不影响已有账户数据）；再次「新增类型」同名可恢复。
   Future<void> removeAccountTypeFromQuickPick(String typeText) =>
       _keyService.hideAccountTypeSuggestion(typeText);
 
@@ -195,13 +289,22 @@ class AccountService {
     return null;
   }
 
-  AccountEntry _decryptEntryWith(String userKey, AccountEntry encrypted) {
-    final password = (encrypted.passwordSecret ?? '').isEmpty
-        ? null
-        : _cryptoService.decrypt(userKey, encrypted.passwordSecret!);
+  AccountEntry _decryptEntryWith(
+    String userKey,
+    AccountEntry encrypted, {
+    required DecryptScope scope,
+  }) {
+    String? password;
+    if (scope == DecryptScope.full) {
+      password = (encrypted.passwordSecret ?? '').isEmpty
+          ? null
+          : _safeDecrypt(userKey, encrypted.passwordSecret!);
+    }
+
     final totp = (encrypted.totpSecret ?? '').isEmpty
         ? null
-        : _cryptoService.decrypt(userKey, encrypted.totpSecret!);
+        : _safeDecrypt(userKey, encrypted.totpSecret!);
+
     return AccountEntry(
       typeText: encrypted.typeText,
       username: encrypted.username,
@@ -209,6 +312,14 @@ class AccountService {
       totpSecret: totp,
       updateTime: encrypted.updateTime,
     );
+  }
+
+  String? _safeDecrypt(String userKey, String cipher) {
+    try {
+      return _cryptoService.decrypt(userKey, cipher);
+    } catch (_) {
+      return null;
+    }
   }
 
   AccountEntry _copyEntry(AccountEntry source) {

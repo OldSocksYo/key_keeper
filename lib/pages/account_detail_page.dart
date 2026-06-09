@@ -1,11 +1,10 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:key_keeper/common/constants.dart';
 import 'package:key_keeper/main.dart';
 import 'package:key_keeper/models/account_entry.dart';
 import 'package:key_keeper/services/account_service.dart';
 import 'package:key_keeper/widgets/account_icon.dart';
+import 'package:key_keeper/widgets/totp_display.dart';
 
 class AccountDetailArgs {
   AccountDetailArgs({required this.mode, this.key});
@@ -31,14 +30,10 @@ class _AccountDetailPageState extends State<AccountDetailPage> {
   final _userCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   final _totpCtrl = TextEditingController();
-  /// 新增/编辑时由开关控制；详情只读时与账户是否含 TOTP 一致。
   bool _totpEnabled = false;
   bool _editing = false;
   bool _passwordObscure = true;
   bool _totpObscure = true;
-  Timer? _timer;
-  String _totpPreview = '------';
-  int _totpRemain = 30;
   List<String> _typeOptions = [...AppConstants.accountTypePresets];
 
   bool get _isInsert => widget.args.mode == AccountDetailMode.insert;
@@ -47,15 +42,12 @@ class _AccountDetailPageState extends State<AccountDetailPage> {
   @override
   void initState() {
     super.initState();
-    _totpCtrl.addListener(_updateTotpPreview);
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _updateTotpPreview());
     _loadTypeOptions();
     _load();
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
     _typeCtrl.dispose();
     _userCtrl.dispose();
     _passwordCtrl.dispose();
@@ -76,7 +68,6 @@ class _AccountDetailPageState extends State<AccountDetailPage> {
       _totpCtrl.text = account.totpSecret ?? '';
       _totpEnabled = account.hasTotp;
     });
-    _updateTotpPreview();
   }
 
   Future<void> _loadTypeOptions() async {
@@ -210,23 +201,6 @@ class _AccountDetailPageState extends State<AccountDetailPage> {
     Navigator.pop(context, true);
   }
 
-  void _updateTotpPreview() {
-    final raw = _totpCtrl.text.trim().toUpperCase();
-    if (raw.isEmpty || !appTotpService.isValidBase32(raw)) {
-      if (!mounted) return;
-      setState(() {
-        _totpPreview = '------';
-        _totpRemain = appTotpService.getRemainingSeconds();
-      });
-      return;
-    }
-    if (!mounted) return;
-    setState(() {
-      _totpPreview = appTotpService.generateCode(raw);
-      _totpRemain = appTotpService.getRemainingSeconds();
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -299,7 +273,6 @@ class _AccountDetailPageState extends State<AccountDetailPage> {
                   _totpEnabled = on;
                   if (!on) _totpCtrl.clear();
                 });
-                _updateTotpPreview();
               },
             ),
           ],
@@ -318,37 +291,9 @@ class _AccountDetailPageState extends State<AccountDetailPage> {
               ),
             ),
             const SizedBox(height: 12),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      _totpPreview,
-                      style: const TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 4,
-                      ),
-                    ),
-                    Column(
-                      children: [
-                        SizedBox(
-                          width: 38,
-                          height: 38,
-                          child: CircularProgressIndicator(
-                            value: _totpRemain / 30,
-                            strokeWidth: 4,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text('${_totpRemain}s'),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
+            TotpPreviewCard(
+              secret: _totpCtrl.text,
+              totpService: appTotpService,
             ),
             if (_totpCtrl.text.trim().isNotEmpty &&
                 !appTotpService.isValidBase32(_totpCtrl.text.trim().toUpperCase()))

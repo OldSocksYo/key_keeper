@@ -45,7 +45,7 @@ The app uses a layered security approach:
 **Main Initialization** (`main.dart`):
 - Initializes Hive with encryption cipher
 - Generates/retrieves 32-byte AES key from secure storage on first launch
-- Opens encrypted Hive box named `password_box`
+- Opens encrypted Hive box named `account_entry_box`
 - Configures go_router with two routes: `/unlock` (entry point) and `/home`
 
 **Routes** (go_router):

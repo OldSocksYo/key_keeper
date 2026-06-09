@@ -157,7 +157,9 @@ class _UnlockPageState extends State<UnlockPage> {
   }
 
   /// 从后台恢复时解锁页在栈顶，应 pop；冷启动仅 go_router 的 `/unlock` 时无上一页，需进入首页。
-  void _finishUnlock() {
+  Future<void> _finishUnlock() async {
+    await appKeyService.warmUserKeyCache();
+    await appAccountService.migrateLegacyEncryptionIfNeeded();
     if (!mounted) return;
     if (context.canPop()) {
       context.pop();

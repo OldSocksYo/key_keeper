@@ -7,6 +7,8 @@ import 'package:key_keeper/models/account_entry.dart';
 import 'package:key_keeper/pages/account_detail_page.dart';
 import 'package:key_keeper/services/account_service.dart';
 import 'package:key_keeper/widgets/account_icon.dart';
+import 'package:key_keeper/widgets/confirm_delete_dialog.dart';
+import 'package:key_keeper/widgets/totp_display.dart';
 
 class AccountListPage extends StatefulWidget {
   const AccountListPage({
@@ -18,7 +20,6 @@ class AccountListPage extends StatefulWidget {
 
   final AccountService accountService;
   final ValueNotifier<String> searchNotifier;
-  /// 从外部递增即可触发重新拉取列表（不依赖 GlobalKey / Navigator 返回值）。
   final ValueNotifier<int> listBump;
 
   @override
@@ -27,29 +28,39 @@ class AccountListPage extends StatefulWidget {
 
 class AccountListPageState extends State<AccountListPage> {
   List<MapEntry<int, AccountEntry>> _list = [];
+  Timer? _searchDebounce;
+  String _pendingKeyword = '';
 
   late final VoidCallback _onListBump;
 
   @override
   void initState() {
     super.initState();
-    _onListBump = () {
-      _refresh();
-    };
-    widget.searchNotifier.addListener(_refresh);
+    _onListBump = _refresh;
+    widget.searchNotifier.addListener(_onSearchChanged);
     widget.listBump.addListener(_onListBump);
+    widget.accountService.dataRevision.addListener(_onListBump);
+    _pendingKeyword = widget.searchNotifier.value;
     _refresh();
   }
 
   @override
   void dispose() {
-    widget.searchNotifier.removeListener(_refresh);
+    _searchDebounce?.cancel();
+    widget.searchNotifier.removeListener(_onSearchChanged);
     widget.listBump.removeListener(_onListBump);
+    widget.accountService.dataRevision.removeListener(_onListBump);
     super.dispose();
   }
 
+  void _onSearchChanged() {
+    _pendingKeyword = widget.searchNotifier.value;
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 300), _refresh);
+  }
+
   Future<void> _refresh() async {
-    final data = await widget.accountService.getAccountList(keyword: widget.searchNotifier.value);
+    final data = await widget.accountService.getAccountList(keyword: _pendingKeyword);
     if (!mounted) return;
     setState(() => _list = data);
   }
@@ -60,150 +71,66 @@ class AccountListPageState extends State<AccountListPage> {
   Widget build(BuildContext context) {
     return RefreshIndicator(
       onRefresh: _refresh,
-      child: ListView.builder(
-        itemCount: _list.length,
-        itemBuilder: (context, index) {
-          final item = _list[index];
-          final colorScheme = Theme.of(context).colorScheme;
-          return Slidable(
-            key: ValueKey('account_${item.key}'),
-            endActionPane: ActionPane(
-              motion: const BehindMotion(),
-              extentRatio: 0.26,
-              children: [
-                SlidableAction(
-                  onPressed: (_) async {
-                    final delete = await showDialog<bool>(
-                      context: context,
-                      builder: (_) => AlertDialog(
-                        title: const Text('是否删除此账户？'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, false),
-                            child: const Text('取消'),
-                          ),
-                          FilledButton(
-                            onPressed: () => Navigator.pop(context, true),
-                            child: const Text('删除'),
-                          ),
-                        ],
-                      ),
-                    );
-                    if (!context.mounted || delete != true) return;
-                    await widget.accountService.deleteAccount(item.key);
-                    await _refresh();
-                  },
-                  backgroundColor: colorScheme.errorContainer,
-                  foregroundColor: colorScheme.onErrorContainer,
-                  icon: Icons.delete_outline,
-                  label: '删除',
-                ),
+      child: _list.isEmpty
+          ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: const [
+                SizedBox(height: 120),
+                Center(child: Text('暂无账号，点击右上角 + 添加')),
               ],
-            ),
-            child: ListTile(
-              leading: AccountIcon(typeText: item.value.typeText),
-              title: Text(item.value.typeText),
-              subtitle: Text(item.value.username),
-              trailing: item.value.hasTotp
-                  ? _AccountListTotpTrailing(secret: item.value.totpSecret ?? '')
-                  : null,
-              onTap: () async {
-                final ok = await Navigator.push<bool>(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => AccountDetailPage(
-                      args: AccountDetailArgs(mode: AccountDetailMode.view, key: item.key),
-                      accountService: widget.accountService,
-                    ),
+            )
+          : ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              itemCount: _list.length,
+              itemBuilder: (context, index) {
+                final item = _list[index];
+                final colorScheme = Theme.of(context).colorScheme;
+                return Slidable(
+                  key: ValueKey('account_${item.key}'),
+                  endActionPane: ActionPane(
+                    motion: const BehindMotion(),
+                    extentRatio: 0.26,
+                    children: [
+                      SlidableAction(
+                        onPressed: (_) async {
+                          final delete = await showConfirmDeleteDialog(context);
+                          if (!context.mounted || delete != true) return;
+                          await widget.accountService.deleteAccount(item.key);
+                          await _refresh();
+                        },
+                        backgroundColor: colorScheme.errorContainer,
+                        foregroundColor: colorScheme.onErrorContainer,
+                        icon: Icons.delete_outline,
+                        label: '删除',
+                      ),
+                    ],
+                  ),
+                  child: ListTile(
+                    leading: AccountIcon(typeText: item.value.typeText),
+                    title: Text(item.value.typeText),
+                    subtitle: Text(item.value.username),
+                    trailing: item.value.hasTotp
+                        ? TotpListTrailing(
+                            secret: item.value.totpSecret ?? '',
+                            totpService: appTotpService,
+                          )
+                        : null,
+                    onTap: () async {
+                      final ok = await Navigator.push<bool>(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => AccountDetailPage(
+                            args: AccountDetailArgs(mode: AccountDetailMode.view, key: item.key),
+                            accountService: widget.accountService,
+                          ),
+                        ),
+                      );
+                      if (ok == true) await _refresh();
+                    },
                   ),
                 );
-                if (ok == true) await _refresh();
               },
             ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-/// 列表项右侧展示当前 TOTP（每秒刷新），无文字标签。
-class _AccountListTotpTrailing extends StatefulWidget {
-  const _AccountListTotpTrailing({required this.secret});
-
-  final String secret;
-
-  @override
-  State<_AccountListTotpTrailing> createState() => _AccountListTotpTrailingState();
-}
-
-class _AccountListTotpTrailingState extends State<_AccountListTotpTrailing> {
-  Timer? _timer;
-  bool _revealed = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() {});
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final raw = widget.secret.trim().toUpperCase();
-    if (raw.isEmpty || !appTotpService.isValidBase32(raw)) {
-      return const SizedBox.shrink();
-    }
-    final code = appTotpService.generateCode(raw);
-    final remain = appTotpService.getRemainingSeconds();
-    final colorScheme = Theme.of(context).colorScheme;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        IconButton(
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-          iconSize: 20,
-          tooltip: _revealed ? '隐藏验证码' : '显示验证码',
-          onPressed: () => setState(() => _revealed = !_revealed),
-          icon: Icon(
-            _revealed ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-            color: colorScheme.primary,
-          ),
-        ),
-        const SizedBox(width: 2),
-        GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onTap: () => setState(() => _revealed = !_revealed),
-          child: Text(
-            _revealed ? code : '••••••',
-            style: TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w600,
-              letterSpacing: _revealed ? 2 : 1,
-              color: _revealed ? colorScheme.primary : colorScheme.onSurfaceVariant,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        SizedBox(
-          width: 20,
-          height: 20,
-          child: CircularProgressIndicator(
-            value: remain / 30,
-            strokeWidth: 2.5,
-            color: colorScheme.primary,
-          ),
-        ),
-      ],
     );
   }
 }
